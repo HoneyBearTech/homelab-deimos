@@ -42,8 +42,8 @@ the checker's unit tests with a coverage floor, `docker compose config` and the 
 every service with throwaway directories and volumes, fails unless each one reports healthy within five
 minutes, runs a backup and restore round trip over every data mount, checks that mounts excluded from backups
 (the media library) are neither archived nor overwritten, and, once the stack has autoheal, checks that it
-restarts a container that turns unhealthy. Until `compose.yaml` exists, the stack steps pass with a notice. CodeQL, dependency review, a DCO check and OpenSSF
-Scorecard also run on the repository.
+restarts a container that turns unhealthy. CodeQL, dependency review, a DCO check and OpenSSF Scorecard also run
+on the repository.
 
 The checker's tests are offline: they feed it JSON fixtures in [`tests/fixtures/`](tests/fixtures/), with no
 Docker and no network. The smoke test needs both: it pulls the pinned images.
@@ -66,8 +66,8 @@ The workflow and secret scanners run in containers; the exact commands are in
 
 - **Compose** (`compose.yaml`): every image pinned as `name:tag@sha256:<digest>` (Dependabot updates both);
   settings from `.env` through `${VAR}`; no `privileged`, added capabilities, host network or PID namespace,
-  or Docker socket mount unless the service has an `org.honeybeartech.deimos.allow.<rule>` label giving the
-  reason; every service has a health check. `scripts/check_compose.py` enforces this.
+  Docker socket mount or device mapping (a GPU goes in `compose.gpu.yaml` as a reservation) unless the service
+  has an `org.honeybeartech.deimos.allow.<rule>` label giving the reason; every service has a health check. `scripts/check_compose.py` enforces this.
 - **Python** (`scripts/`, `tests/`): [PEP 8](https://peps.python.org/pep-0008/) and
   [PEP 257](https://peps.python.org/pep-0257/), enforced by [ruff](https://docs.astral.sh/ruff/) with every rule
   family enabled, including type annotations, docstrings and the bandit security rules, and `ruff format`; the

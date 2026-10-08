@@ -3,9 +3,9 @@
 How homelab-deimos chooses, obtains, tracks and updates what it's built from, and what happens when one of
 those dependencies has a vulnerability.
 
-homelab-deimos's dependencies are almost entirely the **container images** it runs (**Planned**: they arrive with
-`compose.yaml`). The rest are the tools its checks and tests use and the GitHub Actions in its workflows. Its
-own code, the policy checker, uses only the Python standard library.
+homelab-deimos's dependencies are almost entirely the **container images** it runs. The rest are the tools its
+checks and tests use and the GitHub Actions in its workflows. Its own code, the policy checker, uses only the
+Python standard library.
 
 ## Choosing a dependency
 
@@ -26,7 +26,7 @@ its release notes.
 
 | Dependency | Declared in | Pinned by | Fetched by |
 | --- | --- | --- | --- |
-| The stack's images (**Planned**) | `compose.yaml` | version tag and digest | `docker compose pull` |
+| The stack's images | [`compose.yaml`](../compose.yaml) | version tag and digest | `docker compose pull` |
 | Check and test tools (pytest, coverage, ruff, yamllint, shellcheck) | [`requirements-dev.in`](../requirements-dev.in) → [`requirements-dev.txt`](../requirements-dev.txt) | exact version and SHA-256 hashes (`pip-compile --generate-hashes`) | `pip install --require-hashes --no-deps` |
 | Helper image for backups and the smoke test (busybox) | [`scripts/lib.sh`](../scripts/lib.sh) | version tag and digest | Docker |
 | Linters and scanners used only by CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest | Docker |
@@ -37,8 +37,8 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 
 ## Tracking dependencies
 
-- **Dependabot** ([`.github/dependabot.yml`](../.github/dependabot.yml)) checks weekly for new image versions in the Compose file, new tool versions and new Action
-  versions, and opens a pull request for each. Dependabot alerts and security updates are on.
+- **Dependabot** ([`.github/dependabot.yml`](../.github/dependabot.yml)) checks weekly for new image
+  versions in the Compose file, new tool versions and new Action versions, and opens a pull request for each. Dependabot alerts and security updates are on.
 - The CI-only images in `run:` steps and the scripts' busybox image aren't seen by Dependabot; they're bumped
   by hand at least every quarter.
 - **Patch and minor updates merge automatically** once every required check has passed (CI with the Compose
@@ -70,8 +70,11 @@ reported to code scanning). Each finding is triaged within 14 days:
 
 ### Current findings
 
-None: there are no images in the stack yet. The first scan runs when `compose.yaml` is added, and its triage is
-recorded here.
+Not triaged yet: the first scan runs when `compose.yaml` reaches `main`, and its triage is recorded here. The
+images are pinned at the versions the server ran before it moved to this repository (Tdarr 2.86.01, Spoolman
+0.22.1, the AMS app's 1.1.1-dev build), all behind their projects' current releases; updating them is the next
+step after the switch. The AMS app's project was renamed HaspelSync and publishes under
+`ghcr.io/rdiger-36/haspelsync`; the old image name is being retired, so the update also moves to the new name.
 
 ## Licenses
 

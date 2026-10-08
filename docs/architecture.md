@@ -6,16 +6,13 @@ the 3D printers' filament. Deimos is an Ubuntu 24.04 virtual machine on amd64 wi
 The repository holds configuration, not application code: the services run from their upstream images, pinned by
 digest.
 
-> **Planned:** `compose.yaml` isn't in the repository yet. This page describes the stack it will define; the
-> services run today from an older, hand-managed setup on the host and move over in one planned cutover.
-
 ## Services
 
 | Service | Image source | Role |
 | --- | --- | --- |
 | Tdarr (server with an internal node) | the project's own image | Scans the media library and runs transcode and health-check flows on it, on the GPU (NVENC/NVDEC) or the CPU; other machines can join as extra nodes |
 | Spoolman | the project's own image | Inventory of filament spools: what's loaded, how much is left; web UI and REST API |
-| AMS app | to be identified | Companion service for the printers' automatic material systems |
+| AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
 agent) come from their own projects; this stack doesn't include or manage them.
@@ -30,7 +27,8 @@ agent) come from their own projects; this stack doesn't include or manage them.
 | Release workflow | On a version tag: checks the policy, writes the SBOM, signs the checksums, publishes the GitHub Release |
 | LAN users | Use the web UIs, usually through the homelab's reverse proxy |
 | Tdarr nodes on other machines | Connect to Tdarr's server port to take transcode jobs (optional) |
-| Home automation and printers | Read or update Spoolman through its API (optional) |
+| The printers | Report their material systems and prints to the AMS app over MQTT; serve the sliced files over FTPS |
+| Home automation | Reads Spoolman through its API (optional) |
 
 ## Data flow
 
@@ -42,7 +40,8 @@ Tdarr ──NVIDIA runtime──▶ GPU
 Tdarr ──scratch files──▶ transcode cache
 Tdarr nodes elsewhere ──server port──▶ Tdarr
 
-AMS app / home automation ──REST──▶ Spoolman   (to be confirmed)
+AMS app ──MQTT / FTPS──▶ printers on the LAN
+AMS app ──REST──▶ Spoolman (inside the stack)
 ```
 
 Each service keeps its settings and database in its own data directory (see
@@ -65,7 +64,8 @@ Nothing on the host updates itself: a version that runs is always a version that
 
 | Path | What |
 | --- | --- |
-| `compose.yaml` | The stack (**Planned**) |
+| `compose.yaml` | The stack |
+| `compose.gpu.yaml` | Tdarr's GPU reservation, for hosts with an NVIDIA GPU |
 | `.env.example` | Template for the settings |
 | `scripts/check_compose.py` | The policy check and SBOM generator (standard-library Python) |
 | `scripts/backup.sh`, `scripts/restore.sh` | Backup and restore of every service's data, never the media library |

@@ -3,8 +3,7 @@
 What homelab-deimos is meant to guarantee, what it leaves to the operator and the services, and where secrets
 live. The reasoning behind these requirements is in the [assurance case](assurance-case.md).
 
-> **Planned:** requirements 1 and 2 apply to `compose.yaml`, which isn't in the repository yet; the checker that
-> enforces them already runs in CI and is tested. Requirements 3 to 6 apply now (5 from the first release).
+> Requirement 5 takes effect with the first release; the others apply now.
 
 ## What homelab-deimos protects
 
@@ -43,6 +42,7 @@ a non-empty reason:
 | `cap-add` | adds Linux capabilities |
 | `host-network` / `host-pid` | uses the host's network or PID namespace |
 | `docker-socket` | mounts the Docker socket |
+| `devices` | maps a host device into the container (a GPU reservation under `deploy.resources` is allowed) |
 | `healthcheck` | has no health check, or disables it (one defined only in the image isn't visible to the check) |
 
 ## What it doesn't protect
@@ -65,5 +65,5 @@ a non-empty reason:
 | Secret | Where | Never in |
 | --- | --- | --- |
 | Logins of services that have them | each service's data | the repository, `.env`, issues, logs you paste |
-| Printer access codes or a printer cloud account token (if the AMS app needs one) | the AMS app's data, or its own gitignored `<service>.env` | same |
+| Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
 | Backups of the data | off the host, mode `600` | anywhere public |

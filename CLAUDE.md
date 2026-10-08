@@ -2,9 +2,8 @@
 
 The Docker Compose stack for Deimos, the owner's homelab media-processing and 3D-printing server (Ubuntu 24.04,
 amd64, a VM with an NVIDIA GPU passed through): Tdarr, Spoolman and the AMS app, every image pinned by tag and
-digest so the server can be upgraded and rebuilt from this repository. The tooling (checker, backup scripts,
-smoke test, CI, release workflow) is in place; `compose.yaml` isn't yet, and the services still run from their
-old setup on the host until the cutover (plan in Chronos).
+digest so the server can be upgraded and rebuilt from this repository. The services still run from their old
+setup on the host until the cutover (plan in Chronos).
 
 ## Before Making Structural Changes
 Read the project's notes first. They live outside this repo, in the owner's Obsidian vault **Chronos** at
@@ -49,16 +48,18 @@ newest and the template for tooling, workflows and policy files.
 - **Amd64.** Every image must publish `linux/amd64`. The smoke test runs on `ubuntu-latest` and the image scan
   scans `linux/amd64`.
 - **The GPU is optional to CI.** GitHub's runners have no GPU, so the NVIDIA device reservation must not stop
-  the stack from starting without one (Proposed: a `compose.gpu.yaml` override; see the Decisions-Log). GPU
-  access is a device reservation, never `privileged: true`.
+  the stack from starting without one: the reservation lives in `compose.gpu.yaml`, which the host adds through
+  `COMPOSE_FILE` in its `.env` and CI leaves out (CI policy-checks both). GPU access is a device reservation,
+  never `privileged: true` or a raw `devices:` mapping.
 - **The media library is never backed up, restored or deleted by this repo's scripts.** It is far too large and
   is protected by the NAS. A service lists such paths in its `org.honeybeartech.deimos.backup.skip` label
   (comma-separated container paths); `backup.sh` skips them, `restore.sh` refuses to write them, and the smoke
-  test checks both. Tdarr's must list `/media`, `/temp` and `/app/logs`. Tdarr writes to the library, so treat
-  Tdarr upgrades and flow changes as risky to data: Tdarr is excluded from Dependabot auto-merge.
-- **No privileged containers, added capabilities, host network/PID or Docker socket mounts** unless the
+  test checks both. Tdarr's lists `/media`, `/temp` and `/app/logs`; the AMS app's `/app/logs`. Tdarr writes to
+  the library, so treat Tdarr upgrades and flow changes as risky to data: Tdarr is excluded from Dependabot
+  auto-merge.
+- **No privileged containers, added capabilities, host network/PID, Docker socket mounts or device mappings** unless the
   service carries `org.honeybeartech.deimos.allow.<rule>: "<reason>"` and the owner agreed.
-  `scripts/check_compose.py` enforces it in CI and in the release workflow.
+  `scripts/check_compose.py` enforces it in CI and in the release workflow. No exceptions are in use.
 - **Every service has a health check** and the `autoheal: "true"` label (once autoheal is in the stack).
 - **Never change the live server** (Deimos) without the owner asking: no `docker compose up`, no edits to
   service data, Tdarr libraries or flows, or Portainer stacks. Read-only inspection (`docker ps`,
@@ -70,15 +71,16 @@ newest and the template for tooling, workflows and policy files.
   and ports the same; see the cutover plan in Chronos.
 
 ## Stack
-- Docker Compose v2 (`compose.yaml`, **Planned**), upstream images: Tdarr (server with an internal node),
-  Spoolman, the AMS app (image to be identified). Not in this repo: Open WebUI, Ollama, the Argus agent, the
+- Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 3 services), upstream images: Tdarr (server with an
+  internal node), Spoolman, the AMS app (HaspelSync, still under its old image name). Pinned at the versions the
+  host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama, the Argus agent, the
   Portainer agent.
 - Tooling (ported from homelab-ares): `scripts/check_compose.py` (Python, standard library only:
   policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `smoke-test.sh`, `lib.sh` (bash, must run
   on macOS' bash 3.2); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
   dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor).
-- Releases (`release.yml`, on a `v*.*.*` tag; it refuses to run without `compose.yaml`): policy check, source archive, CycloneDX SBOM,
+- Releases (`release.yml`, on a `v*.*.*` tag): policy check, source archive, CycloneDX SBOM,
   `SHA256SUMS` signed with cosign keyless, SLSA provenance, GitHub Release from the tag's `CHANGELOG.md`
   section. No images are built or published.
 

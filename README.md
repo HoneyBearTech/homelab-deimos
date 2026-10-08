@@ -13,10 +13,6 @@ Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an 
 > them, and this stack does not back the library up. Keep snapshots of the library on the storage that holds it,
 > and back up the services' data before every upgrade ([docs/upgrading.md](docs/upgrading.md)).
 
-> [!NOTE]
-> **Planned:** the stack itself (`compose.yaml`) isn't in the repository yet. The documentation describes what
-> it will be; everything not built yet is marked **Planned**.
-
 ## Documentation
 
 - [Quick start](docs/quick-start.md): getting the stack running on a fresh Docker host
@@ -35,30 +31,31 @@ Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an 
 
 ## What's in the stack
 
-**Planned** ([architecture](docs/architecture.md), ports in [interfaces](docs/interfaces.md#services-and-ports)):
+([architecture](docs/architecture.md), ports in [interfaces](docs/interfaces.md#services-and-ports)):
 
 - **Tdarr**: transcodes and health-checks the media library, using the GPU (NVENC/NVDEC)
 - **Spoolman**: an inventory of 3D-printer filament spools, with a web UI and an API
-- **The AMS app**: a companion service for the printers' automatic material systems (to be confirmed when the
-  stack is added)
+- **The AMS app** ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)): keeps Spoolman in step with what the
+  Bambu Lab printers' automatic material systems hold and what each print uses
 
-Every service will have a health check, and every image will be pinned by tag **and** digest, for
-`linux/amd64`. New versions arrive as Dependabot pull requests that CI checks and the maintainer merges;
+Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
+is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
+one. New versions arrive as Dependabot pull requests that CI checks and the maintainer merges;
 nothing on the host updates itself.
 
 ## Getting started
 
-**Planned**, once `compose.yaml` exists:
-
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
-cp .env.example .env && chmod 600 .env              # then set TZ, PUID/PGID and the paths
-. ./.env && mkdir -p "$TDARR_SERVER_PATH" "$TDARR_CONFIGS_PATH" "$TDARR_LOGS_PATH" "$TDARR_CACHE_PATH" "$SPOOLMAN_DATA_PATH"
+cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and SPOOLMAN_PUBLIC_URL
+. ./.env && mkdir -p "$TDARR_SERVER_PATH" "$TDARR_CONFIGS_PATH" "$TDARR_LOGS_PATH" "$TDARR_CACHE_PATH" \
+  "$SPOOLMAN_DATA_PATH" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"
 docker compose up -d --wait
 ```
 
-The host needs the NVIDIA driver and the NVIDIA Container Toolkit for Tdarr to use the GPU
-([installing](docs/installing.md#requirements)). The full steps are in the [quick start](docs/quick-start.md).
+For Tdarr to use the GPU, the host needs the NVIDIA driver and the NVIDIA Container Toolkit, and `.env` needs
+`COMPOSE_FILE=compose.yaml:compose.gpu.yaml` ([installing](docs/installing.md#requirements)). The full steps are
+in the [quick start](docs/quick-start.md).
 
 ## Usage
 
@@ -73,19 +70,22 @@ Upgrading to a new release: [docs/upgrading.md](docs/upgrading.md).
 
 ## Configuration
 
-Settings come from `.env` (template [`.env.example`](.env.example)), which holds no secrets. **Planned**: the
-list is settled when the stack is added.
+Settings come from `.env` (template [`.env.example`](.env.example)), which holds no secrets.
 
 | Setting | Default in `.env.example` | Meaning |
 | --- | --- | --- |
 | `TZ` | `Etc/UTC` | Time zone |
-| `PUID`, `PGID` | `1000` | User and group Tdarr runs as; must be able to read and write the media library |
+| `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
+| `PUID`, `PGID` | `1000` | User and group Tdarr and Spoolman run as; Tdarr's must be able to read and write the media library |
 | `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
 | `TDARR_SERVER_PATH` | `/srv/appdata/tdarr/server` | Tdarr's database |
 | `TDARR_CONFIGS_PATH` | `/srv/appdata/tdarr/configs` | Tdarr's settings |
 | `TDARR_LOGS_PATH` | `/srv/appdata/tdarr/logs` | Tdarr's logs |
 | `TDARR_CACHE_PATH` | `/srv/transcode-cache` | Scratch space for transcodes in progress |
 | `SPOOLMAN_DATA_PATH` | `/srv/appdata/spoolman` | Spoolman's database |
+| `SPOOLMAN_PUBLIC_URL` | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at (the AMS app's links) |
+| `AMS_PRINTERS_PATH` | `/srv/appdata/ams/printers` | The AMS app's printer list, with the printers' access codes |
+| `AMS_LOGS_PATH` | `/srv/appdata/ams/logs` | The AMS app's logs |
 
 Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 
