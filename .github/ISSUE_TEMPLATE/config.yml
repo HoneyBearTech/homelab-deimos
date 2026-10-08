@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/HoneyBearTech/homelab-deimos/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue. See SECURITY.md.
+  - name: Documentation
+    url: https://github.com/HoneyBearTech/homelab-deimos/blob/main/docs/README.md
+    about: Installing, upgrading, every setting, and the security model.

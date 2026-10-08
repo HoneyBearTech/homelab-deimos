@@ -1,0 +1,30 @@
+version: 2
+# Patch and minor updates are auto-merged once every required check passes
+# (workflows/dependabot-auto-merge.yml), except Tdarr's; major updates wait for the maintainer, since a new
+# major version can migrate a service's data one way. A merge changes main only; the server is updated by a
+# deliberate redeploy.
+updates:
+  # The stack's images in compose.yaml (version tag and digest).
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees: ["HoneyBearTech"]
+
+  # The check and test tools (requirements-dev.txt), pinned with hashes.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees: ["HoneyBearTech"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    assignees: ["HoneyBearTech"]
+    groups:
+      # init, analyze and upload-sarif must share one version.
+      codeql:
+        patterns:
+          - "github/codeql-action*"

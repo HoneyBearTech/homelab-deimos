@@ -1,0 +1,19 @@
+{
+  "name": "deimos",
+  "services": {
+    "no-image": {"build": {"context": "."}, "healthcheck": {"test": ["CMD", "true"]}},
+    "tag-only": {"image": "lscr.io/linuxserver/bazarr:1.5.3", "healthcheck": {"test": ["CMD", "true"]}},
+    "latest": {"image": "containrrr/watchtower:latest@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"test": ["CMD", "true"]}},
+    "digest-only": {"image": "lscr.io/linuxserver/lidarr@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"test": ["CMD", "true"]}},
+    "short-digest": {"image": "lscr.io/linuxserver/sabnzbd:4.5.3@sha256:abc", "healthcheck": {"test": ["CMD", "true"]}},
+    "privileged": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "privileged": true, "healthcheck": {"test": ["CMD", "true"]}},
+    "caps": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "cap_add": ["NET_ADMIN", "SYS_ADMIN"], "healthcheck": {"test": ["CMD", "true"]}},
+    "hostnet": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "network_mode": "host", "healthcheck": {"test": ["CMD", "true"]}},
+    "hostpid": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pid": "host", "healthcheck": {"test": ["CMD", "true"]}},
+    "socket": {"image": "portainer/agent:2.33.2@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "volumes": [{"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"}], "healthcheck": {"test": ["CMD", "true"]}},
+    "no-healthcheck": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+    "healthcheck-disabled": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"disable": true}},
+    "healthcheck-none": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"test": ["NONE"]}},
+    "healthcheck-timing-only": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"interval": "5s"}}
+  }
+}

@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    # The required status check on main; keep this name (the branch ruleset refers to it).
+    name: Checks + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # gitleaks scans the whole history, not just this commit
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install the check and test tools
+        run: python -m pip install --require-hashes --no-deps -r requirements-dev.txt
+
+      # Coding standards (CONTRIBUTING.md#coding-standards). Any finding fails the build.
+      - name: Lint Python (ruff)
+        run: |
+          ruff check --output-format github .
+          ruff format --check .
+
+      - name: Lint YAML (yamllint)
+        run: yamllint --strict --format github .
+
+      - name: Lint shell scripts (shellcheck)
+        run: shellcheck -x --format gcc scripts/*.sh
+
+      - name: Lint workflows (actionlint, with shellcheck)
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro" -w /repo
+          rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+      # The checkout belongs to another user inside the container, so git needs safe.directory, and the step
+      # fails if gitleaks ever scans nothing (it would otherwise report "no leaks found").
+      - name: No secrets in the repository or its history (gitleaks)
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" \
+            -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --redact --no-banner --no-color /repo 2>&1 | tee "$RUNNER_TEMP/gitleaks.log"
+          if grep -Eq ' 0 commits scanned|ERR' "$RUNNER_TEMP/gitleaks.log"; then
+            echo "::error::gitleaks didn't scan the history"
+            exit 1
+          fi
+
+      # Offline: JSON fixtures only, no Docker, no network. The floor is in pyproject.toml.
+      - name: Unit tests with coverage (pytest)
+        run: |
+          coverage run -m pytest
+          coverage report
+
+      # The stack itself: the Compose file resolves with the example settings, and every service meets the
+      # policy (pinned by digest, nothing privileged; scripts/check_compose.py). Skipped until compose.yaml exists.
+      - name: Compose file and policy
+        run: |
+          if [ ! -f compose.yaml ]; then
+            echo "::notice::No compose.yaml yet; skipping the stack checks"
+            exit 0
+          fi
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose config --format json | python scripts/check_compose.py
+
+  smoke:
+    # A required check on main, like "Checks + tests", so an image that doesn't start can't be auto-merged.
+    name: Stack smoke test
+    # Amd64, like the server, so the images are tested for the platform they run on. GitHub's runners have no GPU,
+    # so the stack must start without one (the GPU reservation lives outside compose.yaml).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Every service from compose.yaml, started with throwaway directories and volumes, must report healthy
+      # within five minutes, and survive a backup and restore (scripts/smoke-test.sh). Logs of every service are
+      # printed if one doesn't. Passes with a notice while there is no compose.yaml.
+      - name: Start the stack and wait until every service is healthy
+        run: scripts/smoke-test.sh

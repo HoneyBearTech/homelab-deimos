@@ -1,0 +1,75 @@
+name: Image scan
+
+# Scans every image the stack pins for known vulnerabilities that have a fix available (Trivy, HIGH and
+# CRITICAL), at the exact digest in compose.yaml and for the host's platform (linux/amd64). Weekly, when
+# compose.yaml changes on main, and on demand. Findings go to the repository's code scanning alerts, one
+# category per image, and are triaged as described in docs/dependencies.md: most are fixed upstream and arrive
+# with Dependabot's next bump of that image. Nothing is scanned while there is no compose.yaml.
+on:
+  push:
+    branches: [main]
+    paths: ["compose.yaml", ".github/workflows/scan.yml"]
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    name: List the pinned images
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # One entry per distinct image. The name is the image's last path segment, which keeps each image's code
+      # scanning category stable across version bumps.
+      - name: List the images in compose.yaml
+        id: list
+        run: |
+          if [ ! -f compose.yaml ]; then
+            echo "::notice::No compose.yaml yet; nothing to scan"
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp .env.example .env
+          matrix=$(docker compose config --images | sort -u | jq -R -s -c '
+            split("\n") | map(select(length > 0))
+            | map({image: ., name: (split("@")[0] | split(":")[0] | split("/")[-1])})')
+          echo "$matrix" | jq .
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: Scan ${{ matrix.name }}
+    needs: images
+    if: needs.images.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write # upload the results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.images.outputs.matrix) }}
+    steps:
+      - name: Scan
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/out" \
+            aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
+            image --image-src remote --platform linux/amd64 --scanners vuln --severity HIGH,CRITICAL \
+            --ignore-unfixed --no-progress --format sarif --output /out/trivy.sarif "$IMAGE"
+          jq -r '"\(.runs[0].results | length) finding(s)"' trivy.sarif
+
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.name }}

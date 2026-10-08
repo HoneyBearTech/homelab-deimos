@@ -1,0 +1,45 @@
+# Settings for the repo's Python tooling. homelab-deimos is a Compose stack, not a package; its only code is
+# scripts/check_compose.py. This file only configures ruff, pytest and coverage. Tools are pinned with
+# hashes in requirements-dev.txt.
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+# Every rule family, minus the few that conflict with the formatter or each other (as in the maintainer's
+# other projects). Exceptions in the code are made per line, with a reason.
+select = ["ALL"]
+ignore = [
+    "COM812", # conflicts with ruff format
+    "CPY001", # no per-file copyright headers; the license is in LICENSE
+    "D203",   # conflicts with D211 (no blank line before a class docstring)
+    "D213",   # conflicts with D212 (summary on the first docstring line)
+    "T201",   # print() is how the checker reports: CI's log is its output
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["INP001"] # standalone scripts, not a package
+"tests/**" = [
+    "D",       # test names say what they test
+    "INP001",  # tests/ is not a package
+    "PLR2004", # expected values are written inline
+    "S101",    # pytest uses assert
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
+# Any warning is a failure.
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+branch = true
+source = ["scripts"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_also = ['if __name__ == "__main__":']

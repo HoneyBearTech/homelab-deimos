@@ -1,0 +1,7 @@
+{
+  "name": "deimos",
+  "services": {
+    "radarr": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "volumes": [{"type": "bind", "source": "/srv/appdata/radarr", "target": "/config"}], "labels": {"com.centurylinklabs.watchtower.enable": "false"}, "healthcheck": {"test": ["CMD", "true"]}},
+    "sonarr": {"image": "lscr.io/linuxserver/sonarr:4.0.15@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "volumes": [{"type": "bind", "source": "/srv/data", "target": "/data"}], "healthcheck": {"test": ["CMD", "true"]}}
+  }
+}
