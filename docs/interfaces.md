@@ -37,7 +37,9 @@ No secret is a setting. A secret a service can only take from its environment ge
 Tdarr runs its server with an internal node named `MyInternalNode` (its worker limits are stored under that name),
 FFmpeg 7, its own login off (`auth: "false"`) and logs capped at 10 MB. The AMS app reaches Spoolman inside the
 stack at `http://spoolman:8000`, in `automatic` mode, every two minutes, and never merges a spool that carries a
-tag. Change these in `compose.yaml`, in a pull request.
+tag. Since HaspelSync 1.3 these only seed its settings: once a setting is saved in its web UI, `settings.json` in
+`/app/printers` owns it and the variable is ignored. Change them in `compose.yaml`, in a pull request, or in the web
+UI, whose settings the backups cover.
 
 ## Services and ports
 
@@ -46,7 +48,7 @@ tag. Change these in `compose.yaml`, in a pull request.
 | Tdarr | `ghcr.io/haveagitgat/tdarr` | 8265 → 8265 | Web UI (LAN only) |
 | | | 8266 → 8266 | Server port for Tdarr nodes on other machines |
 | Spoolman | `ghcr.io/donkie/spoolman` | 7912 → 8000 | Web UI and REST API (LAN only) |
-| AMS app (HaspelSync) | `ghcr.io/rdiger-36/bambulab-ams-spoolman-filamentstatus` | 4000 → 4000 | Web UI (LAN only) |
+| AMS app (HaspelSync) | `ghcr.io/rdiger-36/haspelsync` | 4000 → 4000 | Web UI (LAN only; set a password under Settings → Network access) |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 
@@ -72,7 +74,7 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 | `/app/logs` | `TDARR_LOGS_PATH` | Tdarr: logs (not backed up) |
 | `/temp` | `TDARR_CACHE_PATH` | Tdarr: transcode cache (not backed up) |
 | `/home/app/.local/share/spoolman` | `SPOOLMAN_DATA_PATH` | Spoolman: database |
-| `/app/printers` | `AMS_PRINTERS_PATH` | AMS app: printer list with the printers' access codes |
+| `/app/printers` | `AMS_PRINTERS_PATH` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `AMS_LOGS_PATH` | AMS app: logs (not backed up) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy (an allowed exception, see below) |
 

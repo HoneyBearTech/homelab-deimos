@@ -12,6 +12,12 @@ All notable changes to homelab-deimos are documented here. The format follows
   back up first ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default (`SPOOLMAN_LEGACY_CLIENT`
   brings the old one back), and cross-origin writes are refused. The image has no `curl` any more, so the health
   check uses its Python.
+- The AMS app 1.1.1-dev → HaspelSync 1.3.3, under the project's new image name `ghcr.io/rdiger-36/haspelsync`
+  (67 image-scan alerts → 11); the container is now called `haspelsync`. It reads the existing printer list and
+  logs a deprecation notice while `compose.yaml`'s environment variables still decide its settings (saving them
+  once in its web UI moves them into `printers/settings.json`). It now books what a print used from the print's
+  sliced file, fetched from the printer over FTPS (port 990); set a web UI password under Settings → Network
+  access.
 
 ## [0.1.0] - 2026-10-08
 

@@ -88,15 +88,17 @@ services:
         - import urllib.request; urllib.request.urlopen("http://localhost:8000/api/v1/health", timeout=5)
 
   ams:
-    # Bambu Lab AMS to Spoolman sync (the project is now called HaspelSync; this is the image the host runs today).
-    # The printers' serial numbers, addresses and access codes live in /app/printers/printers.json, in plain text:
-    # never in this repository, and backups of it are secret.
-    image: ghcr.io/rdiger-36/bambulab-ams-spoolman-filamentstatus:1.1.1-dev@sha256:930d742154267931a44ce7560535b8550c201f7a50cc05b323c4e756eccb396b
-    container_name: bambulab-ams-spoolman-filamentstatus
+    # HaspelSync: Bambu Lab AMS to Spoolman sync (formerly bambulab-ams-spoolman-filamentstatus). The printers'
+    # serial numbers, addresses and access codes live in /app/printers/printers.json, in plain text, next to the
+    # settings saved in its web UI (settings.json): never in this repository, and backups of it are secret.
+    image: ghcr.io/rdiger-36/haspelsync:1.3.3@sha256:dee7eea6e0aad6d310cecb0488c4d46879fa32b40fcf4c025f07cf5e45a51bc6
+    container_name: haspelsync
     restart: unless-stopped
     environment:
       TZ: ${TZ:?set TZ in .env}
-      # Spoolman in this stack, by its service name; the public URL is what the app's links point at.
+      # Spoolman in this stack, by its service name; the public URL is what the app's links point at. Since 1.3 these
+      # only seed a setting until it is first saved in the web UI (printers/settings.json then owns it), and it logs a
+      # deprecation notice while they are in charge; kept so that a fresh installation finds Spoolman on its own.
       SPOOLMAN_ENDPOINT: http://spoolman:8000
       SPOOLMAN_FQDN: ${SPOOLMAN_PUBLIC_URL:?set SPOOLMAN_PUBLIC_URL in .env}
       UPDATE_INTERVAL: "120000"
