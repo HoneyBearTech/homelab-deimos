@@ -86,11 +86,34 @@ what runs. **Updating them is the first step after the switch**, one service at 
 | AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired. **Done on `main`** (deployed after the switch-over): rehearsed from a legacy `printers.json` against Spoolman 0.27.0 |
 | Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
 
-**Reachability.** None of the services is published beyond the LAN, and all three are behind the homelab's reverse
-proxy with a LAN-only access list. Most of the AMS app's and Tdarr's alerts are in Node modules of the npm command
-line and of build tools that never run in the container. Nothing has been dismissed yet: the alerts that the updates
-don't close are reviewed then, image by image, and either dismissed with a reason here or left open, waiting for
-upstream. They're re-checked monthly.
+After the two updates the scan on `main` reported 85 open alerts for Spoolman, HaspelSync and the old AMS app
+image, and 480 for Tdarr. **Not reachable in this stack** (73 alerts, dismissed in code scanning as "won't fix"
+with this reason; which programs run was checked with `docker top` on the pinned images):
+
+| Image | Package | Why it can't be reached |
+| --- | --- | --- |
+| Tdarr | `Tdarr_Server_Tray`, `Tdarr_Node_Tray` (44) | The desktop system-tray apps; the container runs only `Tdarr_Server`, `Tdarr_Node`, their Rust helpers and `exiftool` |
+| Tdarr, HaspelSync | the npm command line's own modules (22: `brace-expansion`, `pacote`, `sigstore`, `tar`, …) | npm only builds the image; neither container ever runs it |
+| Spoolman | `perl-base` (7) | Part of the Debian base for package-manager scripts; Spoolman (`entrypoint.sh`, then uvicorn) never runs Perl. Tdarr does run Perl (for `exiftool`), so its Perl alerts stay open |
+
+**Open, waiting for upstream** (434: Tdarr 424, Spoolman 9, HaspelSync 1). No newer image has the fixed package
+yet; each alert closes by itself when a bump to such an image is merged and the scan runs again. None of the
+services is published beyond the LAN, and all three sit behind the homelab's reverse proxy with a LAN-only access
+list. They're re-checked monthly.
+
+- **Tdarr** (424): Debian packages of its base image (190, 16 of them critical, including Perl, which `exiftool`
+  uses), and the Node modules and runtimes bundled into `Tdarr_Server` and `Tdarr_Node` (232). Tdarr is closed
+  source, so only its maintainers can update these; its newest release (2.94.03) has as many. Reachable through
+  the web UI and the node port on the LAN, and through crafted media files that Tdarr's FFmpeg and `exiftool`
+  read.
+- **Spoolman** (9): `anyio` (one critical), `urllib3` (its web stack and HTTP client), `libpcre2`, and `setuptools`
+  and `msgpack` in a Python the image carries outside Spoolman's own environment (not located, so not dismissed).
+  Reachable through its web UI and API on the LAN.
+- **HaspelSync** (1): `proxy-addr` (critical) in its web framework, reachable through its web UI on the LAN (set
+  its password, [installing.md](installing.md#running-it-securely)).
+- **The old AMS app image** (58, category `trivy-bambulab-ams-spoolman-filamentstatus`): no longer in
+  `compose.yaml`, so no scan updates them, but the server runs that image until it deploys the HaspelSync update.
+  They're dismissed ("won't fix", replaced) once it has.
 
 ## Licenses
 
