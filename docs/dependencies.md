@@ -86,7 +86,7 @@ what runs. **Updating them is the first step after the switch**, one service at 
 | AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired. **Done on `main`** (deployed after the switch-over): rehearsed from a legacy `printers.json` against Spoolman 0.27.0 |
 | Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
 
-After the two updates the scan on `main` reported 99 open alerts for Spoolman, HaspelSync and the old AMS app
+After the two updates the scan on `main` reported 85 open alerts for Spoolman, HaspelSync and the old AMS app
 image, and 480 for Tdarr. **Not reachable in this stack** (73 alerts, dismissed in code scanning as "won't fix"
 with this reason; which programs run was checked with `docker top` on the pinned images):
 
