@@ -5,8 +5,6 @@ migrate their database when they start a new version and can't go back afterward
 with a backup**. The same steps apply to updating a checkout of `main`, which is possible but unsupported for
 anything you depend on.
 
-> **Planned:** there are no releases yet; until the first one, upgrade a checkout of `main` the same way.
-
 ## Before you upgrade
 
 1. Read the release notes (the `CHANGELOG.md` section) for every release between yours and the new one, and
