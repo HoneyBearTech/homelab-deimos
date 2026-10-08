@@ -59,8 +59,12 @@ newest and the template for tooling, workflows and policy files.
   auto-merge.
 - **No privileged containers, added capabilities, host network/PID, Docker socket mounts or device mappings** unless the
   service carries `org.honeybeartech.deimos.allow.<rule>: "<reason>"` and the owner agreed.
-  `scripts/check_compose.py` enforces it in CI and in the release workflow. No exceptions are in use.
-- **Every service has a health check** and the `autoheal: "true"` label (once autoheal is in the stack).
+  `scripts/check_compose.py` enforces it in CI and in the release workflow. Exceptions in use (the owner asked for
+  autoheal 2026-10-08, with the same exceptions as on ares): `socket-proxy` (`docker-socket`, read-only: filters
+  the API down to list/inspect/restart/stop for autoheal, internal network, no port), `autoheal` (`latest`: the
+  image's only maintained tag). Don't add more without the owner agreeing.
+- **Every service has a health check and the `autoheal: "true"` label** (except autoheal itself). autoheal must
+  never get the socket itself, only `tcp://socket-proxy:2375`.
 - **Never change the live server** (Deimos) without the owner asking: no `docker compose up`, no edits to
   service data, Tdarr libraries or flows, or Portainer stacks. Read-only inspection (`docker ps`,
   `docker inspect`) only when asked.
@@ -71,10 +75,10 @@ newest and the template for tooling, workflows and policy files.
   and ports the same; see the cutover plan in Chronos.
 
 ## Stack
-- Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 3 services), upstream images: Tdarr (server with an
-  internal node), Spoolman, the AMS app (HaspelSync, still under its old image name). Pinned at the versions the
-  host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama, the Argus agent, the
-  Portainer agent.
+- Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 5 services), upstream images: Tdarr (server with an
+  internal node), Spoolman, the AMS app (HaspelSync, still under its old image name), autoheal + socket-proxy.
+  Pinned at the versions the host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama,
+  the Argus agent, the Portainer agent.
 - Tooling (ported from homelab-ares): `scripts/check_compose.py` (Python, standard library only:
   policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `smoke-test.sh`, `lib.sh` (bash, must run
   on macOS' bash 3.2); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),

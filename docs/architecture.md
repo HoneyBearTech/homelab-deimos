@@ -12,6 +12,8 @@ digest.
 | --- | --- | --- |
 | Tdarr (server with an internal node) | the project's own image | Scans the media library and runs transcode and health-check flows on it, on the GPU (NVENC/NVDEC) or the CPU; other machines can join as extra nodes |
 | Spoolman | the project's own image | Inventory of filament spools: what's loaded, how much is left; web UI and REST API |
+| autoheal | the project's own image | Restarts any service whose health check fails, through socket-proxy; can post a notice to a webhook |
+| socket-proxy | LinuxServer.io's image | A filter in front of the Docker socket that lets autoheal only list, inspect, restart and stop containers |
 | AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
@@ -42,6 +44,8 @@ Tdarr nodes elsewhere ──server port──▶ Tdarr
 
 AMS app ──MQTT / FTPS──▶ printers on the LAN
 AMS app ──REST──▶ Spoolman (inside the stack)
+
+autoheal ──(internal network)──▶ socket-proxy ──read-only socket──▶ Docker: restarts unhealthy containers
 ```
 
 Each service keeps its settings and database in its own data directory (see

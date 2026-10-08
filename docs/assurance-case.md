@@ -33,13 +33,14 @@ data or the media library's storage.
 3. **LAN → web UIs.** Not published beyond the LAN; reached through a reverse proxy with access lists.
 4. **Tdarr → media library.** Read-write by design; the boundary is the library's own snapshots.
 5. **Containers → host.** Only each service's data directories, the media library and the GPU; no host
-   namespaces, no Docker socket.
+   namespaces. The one socket mount (socket-proxy, read-only, filtered, on an internal network) is a reviewed,
+   labelled exception; autoheal reaches Docker only through it.
 6. **Pull requests → CI.** Fork pull requests get a read-only token and no secrets.
 
 ## Secure design principles
 
-- **Least privilege**: no added capabilities, no host namespaces, no socket; the GPU as a device reservation;
-  read-only CI tokens raised per job.
+- **Least privilege**: no added capabilities, no host namespaces, one filtered socket mount; the GPU as a device
+  reservation; read-only CI tokens raised per job.
 - **Fail-safe defaults**: the policy check fails on anything it doesn't recognise as allowed; an exception
   needs a reason, in the file, in review. `restore.sh` refuses anything in a backup it can't account for.
 - **Complete mediation**: every change to what runs passes through a pull request and the same checks;
