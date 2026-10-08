@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest a service, a setting, or another improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Please check the [roadmap](https://github.com/HoneyBearTech/homelab-deimos/blob/main/docs/roadmap.md)
+        first: it lists what's planned and what homelab-deimos deliberately won't do.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered

@@ -1,0 +1,7 @@
+# Tools for the checks and tests (homelab-deimos itself needs none of them). Pinned with hashes in
+# requirements-dev.txt, regenerated with:  pip-compile --generate-hashes --strip-extras requirements-dev.in
+coverage
+pytest
+ruff
+shellcheck-py
+yamllint
