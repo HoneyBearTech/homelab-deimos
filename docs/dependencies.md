@@ -82,7 +82,7 @@ what runs. **Updating them is the first step after the switch**, one service at 
 
 | Image | Today | Current release | What the update does |
 | --- | --- | --- | --- |
-| Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of today's alerts are Debian packages of an 18-month-old base image; the update migrates Spoolman's database forward |
+| Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of 0.22.1's alerts are Debian packages of an 18-month-old base image. **Done on `main`** (deployed after the switch-over): the database migration was rehearsed from 0.22.1 data, and the AMS app's 1.1.1-dev build works with it |
 | AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired |
 | Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
 

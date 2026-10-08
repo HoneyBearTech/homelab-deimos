@@ -100,7 +100,8 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 
 From the host: the image registries (GitHub Container Registry) on `docker compose pull`; the media library's
 storage. From the services: Tdarr downloads its components and plugin updates from its project's servers;
-Tdarr nodes on other machines connect to port 8266; the AMS app connects to each printer on the LAN over MQTT
+Spoolman fetches the SpoolmanDB filament catalogue from `donkie.github.io`; Tdarr nodes on
+other machines connect to port 8266; the AMS app connects to each printer on the LAN over MQTT
 (port 8883) and FTPS (port 990), and to Spoolman inside the stack.
 
 ## Release files

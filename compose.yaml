@@ -63,7 +63,9 @@ services:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8265/api/v2/status"]
 
   spoolman:
-    image: ghcr.io/donkie/spoolman:0.22.1@sha256:238ea5bfb2eeda4436c39f54e73df5fef4ee904fb7c291617588b856786fe0ef
+    # Migrates its database forward on the first start of a new version (back up first: docs/upgrading.md), and keeps
+    # nightly database backups of its own in its data directory (backups/).
+    image: ghcr.io/donkie/spoolman:0.27.0@sha256:7aba565eff774c6dda212d4204de8fa30bf68d513127ef875cc7ef3197a4664e
     container_name: spoolman
     restart: unless-stopped
     environment:
@@ -78,7 +80,12 @@ services:
       - ${SPOOLMAN_DATA_PATH:?set SPOOLMAN_DATA_PATH in .env}:/home/app/.local/share/spoolman
     healthcheck:
       <<: *healthcheck
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/api/v1/health"]
+      # The image has neither curl nor wget; its Python asks the health endpoint.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8000/api/v1/health", timeout=5)
 
   ams:
     # Bambu Lab AMS to Spoolman sync (the project is now called HaspelSync; this is the image the host runs today).
