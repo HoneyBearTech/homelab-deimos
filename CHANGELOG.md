@@ -6,6 +6,13 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates forward on the first start, so
+  back up first ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default (`SPOOLMAN_LEGACY_CLIENT`
+  brings the old one back), and cross-origin writes are refused. The image has no `curl` any more, so the health
+  check uses its Python.
+
 ## [0.1.0] - 2026-10-08
 
 The first release: the Deimos stack as a Compose file, every image pinned by version tag and digest for
