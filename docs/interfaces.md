@@ -25,8 +25,12 @@ setting marked required stops `docker compose` with an error naming it when it's
 | `AMS_PRINTERS_PATH` | yes | `/srv/appdata/ams/printers` | The AMS app's printer list, including the printers' access codes in plain text. |
 | `AMS_LOGS_PATH` | yes | `/srv/appdata/ams/logs` | The AMS app's logs (not backed up). |
 
-No secret is a setting. If a service ever needs one in its environment, it gets its own gitignored
-`<service>.env` (mode `600`) with a committed `<service>.env.example`, listed here.
+No secret is a setting. A secret a service can only take from its environment gets its own gitignored
+`<service>.env` (mode `600`) with a committed `<service>.env.example`:
+
+| File | Setting | Meaning |
+| --- | --- | --- |
+| `autoheal.env` (optional; template [`autoheal.env.example`](../autoheal.env.example)) | `WEBHOOK_URL` | Where autoheal posts a notice for each restart (a Discord channel webhook works as is). A secret: anyone with it can post to the channel. |
 
 ### Fixed in `compose.yaml`
 
@@ -43,9 +47,13 @@ tag. Change these in `compose.yaml`, in a pull request.
 | | | 8266 → 8266 | Server port for Tdarr nodes on other machines |
 | Spoolman | `ghcr.io/donkie/spoolman` | 7912 → 8000 | Web UI and REST API (LAN only) |
 | AMS app (HaspelSync) | `ghcr.io/rdiger-36/bambulab-ams-spoolman-filamentstatus` | 4000 → 4000 | Web UI (LAN only) |
+| autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
+| socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
-`/api/v2/status`, Spoolman's `/api/v1/health`, and the AMS app's web UI.
+`/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, autoheal's process and the proxy's `/_ping`.
+autoheal checks every 10 seconds and gives a service 30 seconds to stop before restarting it; a service gets 10
+minutes after it starts before failed checks count.
 
 ## GPU
 
@@ -66,12 +74,14 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 | `/home/app/.local/share/spoolman` | `SPOOLMAN_DATA_PATH` | Spoolman: database |
 | `/app/printers` | `AMS_PRINTERS_PATH` | AMS app: printer list with the printers' access codes |
 | `/app/logs` | `AMS_LOGS_PATH` | AMS app: logs (not backed up) |
+| `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy (an allowed exception, see below) |
 
 ## Labels
 
 | Label | Meaning |
 | --- | --- |
-| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). None in use. |
+| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`). |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app and socket-proxy. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
 
 ## Commands

@@ -53,6 +53,9 @@ a non-empty reason:
   or delete them; only snapshots on the storage that holds the library protect against that.
 - **Access to the web UIs.** Most of these services have no login. Keeping them on the LAN, behind a reverse
   proxy's access lists, is the operator's job ([installing.md](installing.md#running-it-securely)).
+- **The Docker API behind the proxy.** socket-proxy mounts the Docker socket (an allowed exception, labelled in
+  `compose.yaml`) and lets autoheal only list, inspect, restart and stop containers; a flaw in the proxy would
+  expose more. It has no published port and sits on an internal network that only autoheal joins.
 - **The GPU driver and runtime.** The NVIDIA driver and Container Toolkit on the host are trusted and kept up to
   date by the operator.
 - **The host.** Anyone with root, `docker` group membership or write access to `.env` or the services' data
@@ -66,4 +69,5 @@ a non-empty reason:
 | --- | --- | --- |
 | Logins of services that have them | each service's data | the repository, `.env`, issues, logs you paste |
 | Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
+| autoheal's webhook URL | `autoheal.env` (gitignored, mode `600`) | same |
 | Backups of the data | off the host, mode `600` | anywhere public |

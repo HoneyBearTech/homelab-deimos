@@ -37,6 +37,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an 
 - **Spoolman**: an inventory of 3D-printer filament spools, with a web UI and an API
 - **The AMS app** ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)): keeps Spoolman in step with what the
   Bambu Lab printers' automatic material systems hold and what each print uses
+- **autoheal**: restarts any of them whose health check fails, through a socket proxy that only lets it list,
+  inspect, restart and stop containers
 
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
@@ -87,6 +89,9 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | `AMS_PRINTERS_PATH` | `/srv/appdata/ams/printers` | The AMS app's printer list, with the printers' access codes |
 | `AMS_LOGS_PATH` | `/srv/appdata/ams/logs` | The AMS app's logs |
 
+autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
+[`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored).
+
 Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 
 ## Running it securely
@@ -97,6 +102,8 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - Tdarr can rewrite or delete anything in the media library: keep snapshots of it, read Tdarr's release notes
   before every upgrade, and test a new flow on a small library first.
 - The GPU is given to Tdarr as a device reservation through the NVIDIA runtime, never by running it privileged.
+- autoheal never gets the Docker socket: it goes through a proxy that only lets it list, inspect, restart and
+  stop containers.
 - Secrets (logins, API keys, printer credentials) live only in each service's data, never in this repository or
   `.env`. Backups contain them: keep them private and off the host.
 - Don't run an auto-updater such as Watchtower on these containers; upgrade by release instead.
