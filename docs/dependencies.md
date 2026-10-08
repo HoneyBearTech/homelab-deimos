@@ -38,7 +38,8 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 ## Tracking dependencies
 
 - **Dependabot** ([`.github/dependabot.yml`](../.github/dependabot.yml)) checks weekly for new image
-  versions in the Compose file, new tool versions and new Action versions, and opens a pull request for each. Dependabot alerts and security updates are on.
+  versions in the Compose file, new tool versions and new Action versions, and opens a pull request for each.
+  Dependabot alerts and security updates are on.
 - The CI-only images in `run:` steps and the scripts' busybox image aren't seen by Dependabot; they're bumped
   by hand at least every quarter.
 - **Patch and minor updates merge automatically** once every required check has passed (CI with the Compose
@@ -70,11 +71,26 @@ reported to code scanning). Each finding is triaged within 14 days:
 
 ### Current findings
 
-Not triaged yet: the first scan runs when `compose.yaml` reaches `main`, and its triage is recorded here. The
-images are pinned at the versions the server ran before it moved to this repository (Tdarr 2.86.01, Spoolman
-0.22.1, the AMS app's 1.1.1-dev build), all behind their projects' current releases; updating them is the next
-step after the switch. The AMS app's project was renamed HaspelSync and publishes under
-`ghcr.io/rdiger-36/haspelsync`; the old image name is being retired, so the update also moves to the new name.
+Triaged 8 October 2026, after the first image scan: 2,393 alerts, every one HIGH or CRITICAL (a few MEDIUM)
+with a fixed package version somewhere upstream: Spoolman 1,846, Tdarr 480, the AMS app 67, autoheal and
+socket-proxy none.
+
+The images are pinned at the versions the server ran before it moved to this repository (Tdarr 2.86.01, Spoolman
+0.22.1, the AMS app's 1.1.1-dev build), so that switching the server over changes how the services run but not
+what runs. **Updating them is the first step after the switch**, one service at a time, each with a backup first
+([upgrading.md](upgrading.md)). Counts from the same scan of each project's current release (`linux/amd64`):
+
+| Image | Today | Current release | What the update does |
+| --- | --- | --- | --- |
+| Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of today's alerts are Debian packages of an 18-month-old base image; the update migrates Spoolman's database forward |
+| AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired |
+| Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
+
+**Reachability.** None of the services is published beyond the LAN, and all three are behind the homelab's reverse
+proxy with a LAN-only access list. Most of the AMS app's and Tdarr's alerts are in Node modules of the npm command
+line and of build tools that never run in the container. Nothing has been dismissed yet: the alerts that the updates
+don't close are reviewed then, image by image, and either dismissed with a reason here or left open, waiting for
+upstream. They're re-checked monthly.
 
 ## Licenses
 

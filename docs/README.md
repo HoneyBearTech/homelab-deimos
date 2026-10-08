@@ -21,5 +21,5 @@ Project policies live at the top of the repository: [CONTRIBUTING.md](../CONTRIB
 [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) and [CHANGELOG.md](../CHANGELOG.md).
 
 These documents change in the same pull request as the behaviour they describe. Anything not built yet is
-marked **Planned**; for now that is the first release. If you find a document that's wrong, please
+marked **Planned**; for now that is a rehearsed rebuild. If you find a document that's wrong, please
 [open an issue](https://github.com/HoneyBearTech/homelab-deimos/issues): it's treated as a bug.

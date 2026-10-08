@@ -6,6 +6,12 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-08
+
+The first release: the Deimos stack as a Compose file, every image pinned by version tag and digest for
+`linux/amd64` at the versions the server runs today, with health checks, autoheal, a GPU override, backups that
+leave the media library alone, and release signing around it.
+
 ### Added
 
 - `compose.yaml`: Tdarr 2.86.01 (server with an internal node), Spoolman 0.22.1 and the AMS app (HaspelSync,
@@ -45,4 +51,5 @@ All notable changes to homelab-deimos are documented here. The format follows
 - A release workflow that publishes a source archive, the SBOM, `SHA256SUMS` signed keylessly with cosign,
   and SLSA build provenance ([docs/verifying-releases.md](docs/verifying-releases.md)).
 
-[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/commits/main
+[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/HoneyBearTech/homelab-deimos/releases/tag/v0.1.0
