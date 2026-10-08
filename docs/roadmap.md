@@ -5,15 +5,16 @@ file changes with them, in the same pull request.
 
 ## Now: the stack in git
 
-- The checks, backup and restore scripts, smoke test, release signing and project policies, ported from the
-  sibling homelab stacks: backups skip the media library, and the smoke test runs without a GPU.
-- `compose.yaml` with Tdarr, Spoolman and the AMS app, every image pinned by tag and digest for `linux/amd64`, a
-  health check for each service, the GPU for Tdarr as an optional override, Dependabot proposing updates.
-- The smoke test and the image scan running against the real stack in CI.
+- Done: the checks, backup and restore scripts, smoke test, release signing and project policies; `compose.yaml`
+  with Tdarr, Spoolman and the AMS app, every image pinned by tag and digest for `linux/amd64`, a health check
+  for each service, the GPU for Tdarr in an optional override file; the smoke test running the real stack in CI.
+- Triage the first image scan.
 - First release (0.1.0) before Deimos switches over, so the server is first deployed from a signed, verified
   version.
 - Switch Deimos to run the stack from a checkout of this repository, adopting the existing data, ports and
   library paths so nothing that reaches the server notices.
+- Then bring the images up to their current releases, one service at a time (Tdarr last, by hand), and move
+  the AMS app to its new image name.
 
 ## Next: safe upgrades and rebuilds
 

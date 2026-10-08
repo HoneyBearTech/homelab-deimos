@@ -1,21 +1,20 @@
 # Assurance case
 
 Why homelab-deimos meets its [security requirements](security.md): the threat model, the trust boundaries,
-the secure design principles it follows, and how common weaknesses are countered. Parts that depend on
-`compose.yaml`, which isn't in the repository yet, are marked **Planned**.
+the secure design principles it follows, and how common weaknesses are countered.
 
 ## Threat model
 
 | Asset | Threat | Countered by |
 | --- | --- | --- |
-| The host | A compromised or malicious image | Digest pins; versions change only by reviewed pull request; no privileged, capability, host-namespace or socket access without a reasoned label (**Planned** for the stack; the checker exists) |
+| The host | A compromised or malicious image | Digest pins; versions change only by reviewed pull request; no privileged, capability, host-namespace or socket access without a reasoned label |
 | The media library | A faulty Tdarr version or flow rewrites or deletes files | Tdarr updates read and merged by the maintainer, never auto-merged; flows tested on a small library first; snapshots on the library's storage (operator) |
 | The media library | A backup or restore script touching it | Paths in a service's `org.honeybeartech.deimos.backup.skip` label are never archived by `backup.sh`, and `restore.sh` refuses to write them even if a backup lists them; the smoke test checks both |
 | The web UIs | Someone on the LAN uses a service without logging in | LAN only, behind a reverse proxy's access lists; no ports published beyond the LAN ([installing.md](installing.md#running-it-securely)) |
 | The host's devices | The GPU granted by running privileged | GPU only as a device reservation through the NVIDIA runtime; `privileged` refused by the policy check |
 | Logins, printer credentials | Committed to the public repository | Kept in the services' data, never in the repo; `.gitignore`; GitHub push protection; gitleaks over the history in CI |
 | Logins, printer credentials | Leaked through a backup | `scripts/backup.sh` writes backups readable only by the user who ran it; documented as secret, to be kept off the host |
-| The services' data | An upgrade that migrates and breaks it | Backup before every upgrade; rollback = old tag + `scripts/restore.sh`, exercised by the CI smoke test (**Planned** against the real stack; tested against a stand-in) |
+| The services' data | An upgrade that migrates and breaks it | Backup before every upgrade; rollback = old tag + `scripts/restore.sh`, exercised by the CI smoke test |
 | The services' data | A crafted backup writing outside the services' data | `restore.sh` verifies `SHA256SUMS` (which covers the `MANIFEST`), accepts only plain archive names and absolute container paths without `..`, and writes only a mount the service has read-write and doesn't exclude from backups |
 | The release | Tampered release files | Keyless-signed `SHA256SUMS`, SLSA provenance, signed tags |
 | The CI pipeline | Untrusted pull request input running with credentials | `pull_request` only, read-only token by default, untrusted values only via `env:`, actions pinned by SHA |
@@ -55,7 +54,7 @@ data or the media library's storage.
 | --- | --- | --- |
 | CWE-494 (code downloaded without integrity check) | Image pulls | Digest pins; signed release checksums |
 | CWE-798 / CWE-312 (hard-coded or cleartext credentials) | Compose `environment:`, `.env`, docs | No secrets in the repo; gitleaks; push protection |
-| CWE-250 (unnecessary privileges) | Container settings, GPU access | Policy rules `privileged`, `cap-add`, `host-*`, `docker-socket`; GPU by reservation |
+| CWE-250 (unnecessary privileges) | Container settings, GPU access | Policy rules `privileged`, `cap-add`, `host-*`, `docker-socket`, `devices`; GPU by reservation |
 | CWE-306 (missing authentication for critical function) | Web UIs without a login | LAN only, behind access lists; logins on where offered |
 | CWE-22 (path traversal) | Restoring a backup | `restore.sh` validates archive names and mount paths from the checksummed `MANIFEST` |
 | CWE-1104 (unmaintained third-party components) | Images, tools, Actions | Dependabot weekly; image scan; triage SLAs ([dependencies.md](dependencies.md)) |
@@ -65,10 +64,10 @@ data or the media library's storage.
 ## Evidence
 
 - CI on every change: ruff (with the bandit rules), yamllint, actionlint, gitleaks over the history,
-  shellcheck, pytest with a 90 % branch-coverage floor; once `compose.yaml` exists, `docker compose config`, the
-  policy check, and a smoke test on amd64 that starts every pinned image without a GPU, waits for its health
+  shellcheck, pytest with a 90 % branch-coverage floor, `docker compose config`, the policy check (with and
+  without the GPU file), and a smoke test on amd64 that starts every pinned image without a GPU, waits for its health
   check, round-trips a backup and restore, and checks that excluded mounts are left alone (a dynamic test of the
-  stack and the scripts). Until then the stack steps pass with a notice.
+  stack and the scripts).
 - A weekly Trivy scan of every pinned image, and on every change to `compose.yaml`, into code scanning.
 - CodeQL (Python and Actions) on every pull request and weekly; OpenSSF Scorecard weekly; dependency
   review on every pull request.

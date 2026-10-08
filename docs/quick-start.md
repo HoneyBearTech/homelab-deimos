@@ -1,8 +1,5 @@
 # Quick start
 
-> **Planned:** `compose.yaml` isn't in the repository yet, so step 5 has nothing to start. The steps are the
-> ones the stack will use.
-
 You need a Linux host on amd64 (the reference is Ubuntu 24.04) with Docker Engine and the Compose v2 plugin, a
 user in the `docker` group, and, for hardware transcoding, an NVIDIA GPU with its driver and the NVIDIA Container
 Toolkit ([installing.md](installing.md#requirements)).
@@ -22,17 +19,18 @@ Toolkit ([installing.md](installing.md#requirements)).
    cp .env.example .env && chmod 600 .env
    ```
 
-   In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH` and the
-   data paths. Every setting is described in [interfaces.md](interfaces.md#settings).
+   In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`, the
+   data paths and `SPOOLMAN_PUBLIC_URL`. With an NVIDIA GPU, uncomment
+   `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting is described in [interfaces.md](interfaces.md#settings).
 
 3. **Create the data directories** as your user, so Docker doesn't create them owned by root:
 
    ```sh
    . ./.env && mkdir -p "$TDARR_SERVER_PATH" "$TDARR_CONFIGS_PATH" "$TDARR_LOGS_PATH" \
-     "$TDARR_CACHE_PATH" "$SPOOLMAN_DATA_PATH"
+     "$TDARR_CACHE_PATH" "$SPOOLMAN_DATA_PATH" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"
    ```
 
-4. **Check the GPU** is visible to containers:
+4. **Check the GPU** is visible to containers (skip this without one):
 
    ```sh
    docker run --rm --gpus all ubuntu nvidia-smi
@@ -48,6 +46,7 @@ Toolkit ([installing.md](installing.md#requirements)).
 
 6. **Finish each service's setup in its web UI** (ports in [interfaces.md](interfaces.md#services-and-ports)).
    In Tdarr, add a library pointing at the media mount and test your flow on a small folder first: Tdarr
-   replaces the files it processes.
+   replaces the files it processes. In the AMS app, add your printers (serial number, access code, address);
+   it finds Spoolman on its own.
 
 To upgrade later, follow [upgrading.md](upgrading.md); it starts with a backup.

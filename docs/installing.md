@@ -2,9 +2,6 @@
 
 The [quick start](quick-start.md) is the short version of this page.
 
-> **Planned:** `compose.yaml` isn't in the repository yet. The requirements and security advice apply now; the
-> install steps apply once the stack is added.
-
 ## Requirements
 
 - Linux with Docker Engine and the Compose v2 plugin (Docker Engine 25 or later and Compose 2.24 or later, for
@@ -12,8 +9,9 @@ The [quick start](quick-start.md) is the short version of this page.
   amd64**; every image is chosen to publish `linux/amd64`.
 - For hardware transcoding: an **NVIDIA GPU** (passed through to the VM if the host is virtual), the NVIDIA
   driver, and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  configured for Docker (`sudo nvidia-ctk runtime configure --runtime=docker`, then restart Docker). Without a
-  GPU, Tdarr still runs and transcodes on the CPU.
+  configured for Docker (`sudo nvidia-ctk runtime configure --runtime=docker`, then restart Docker), and
+  `COMPOSE_FILE=compose.yaml:compose.gpu.yaml` in `.env`. Without a GPU, leave that line out: Tdarr still runs
+  and transcodes on the CPU.
 - A user in the `docker` group to run `docker compose`. Membership is equivalent to root on the host, so keep
   that group small.
 - The media library mounted on the host (local disk or a network share) and writable by `PUID`/`PGID`.
@@ -30,9 +28,10 @@ The [quick start](quick-start.md) is the short version of this page.
 | Tdarr's logs | `TDARR_LOGS_PATH` | `/app/logs` |
 | Tdarr's transcode cache | `TDARR_CACHE_PATH` | `/temp` |
 | Spoolman's database | `SPOOLMAN_DATA_PATH` | `/home/app/.local/share/spoolman` |
-| The AMS app's data | to be settled | to be settled |
+| The AMS app's printer list (with the printers' access codes) | `AMS_PRINTERS_PATH` | `/app/printers` |
+| The AMS app's logs | `AMS_LOGS_PATH` | `/app/logs` |
 
-These are **Planned** paths ([interfaces.md](interfaces.md#volumes-and-mounts)).
+Every mount is listed in [interfaces.md](interfaces.md#volumes-and-mounts).
 
 ## Installing
 

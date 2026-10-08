@@ -1,7 +1,7 @@
 # Verifying releases
 
-> **Planned:** there is no release yet; the first one comes with `compose.yaml` ([roadmap](roadmap.md)). The
-> release workflow is in place, and this is how its releases will be verified.
+> **Planned:** there is no release yet; the first one comes before Deimos switches to this repository
+> ([roadmap](roadmap.md)). The release workflow is in place, and this is how its releases will be verified.
 
 Every homelab-deimos release will be published by the [`release.yml`](../.github/workflows/release.yml)
 workflow when a version tag is pushed. homelab-deimos builds no images: a release is a version of the Compose

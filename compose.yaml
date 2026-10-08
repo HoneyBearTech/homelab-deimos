@@ -1,0 +1,105 @@
+# The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory) and the AMS app that
+# keeps Spoolman in step with the printers' material systems. Every setting comes from .env (template: .env.example;
+# reference: docs/interfaces.md). Every image is pinned as name:tag@sha256:<digest> and publishes linux/amd64;
+# Dependabot proposes updates. scripts/check_compose.py enforces the policy (docs/security.md#policy).
+#
+# The GPU is not in this file: compose.gpu.yaml reserves it for Tdarr, and the host's .env adds that file with
+# COMPOSE_FILE=compose.yaml:compose.gpu.yaml. CI and the smoke test run this file alone, on runners without a GPU.
+name: homelab-deimos
+
+# Health check timing shared by every service; each service adds its own test. During start_period a failing check
+# doesn't count, and Docker checks every start_interval, so a healthy service shows up within seconds. The long
+# start_period covers a slow database migration after an upgrade (start_interval needs Docker Engine 25 and
+# Compose 2.24).
+x-healthcheck: &healthcheck
+  interval: 1m
+  timeout: 10s
+  retries: 3
+  start_period: 10m
+  start_interval: 5s
+
+services:
+  tdarr:
+    # Server with its internal node. Every Tdarr update is merged by hand after reading its release notes (it rewrites
+    # the media library), so Dependabot's auto-merge skips it.
+    image: ghcr.io/haveagitgat/tdarr:2.86.01@sha256:45742f00e51a58553844c8b13d97e7ae9b2ee9a056bd8e5993d9a8282a45a23f
+    container_name: tdarr
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      PUID: ${PUID:?set PUID in .env}
+      PGID: ${PGID:?set PGID in .env}
+      UMASK_SET: "002"
+      serverIP: 0.0.0.0
+      serverPort: "8266"
+      webUIPort: "8265"
+      internalNode: "true"
+      inContainer: "true"
+      # The internal node's settings (worker limits) are stored under its name: keep it.
+      nodeName: MyInternalNode
+      ffmpegVersion: "7"
+      # Tdarr's own login is off: keep the web UI on the LAN, behind the reverse proxy's access list.
+      auth: "false"
+      maxLogSizeMB: "10"
+    labels:
+      # The library is far too large to back up here and lives on its own storage; the cache and logs are
+      # disposable (scripts/lib.sh).
+      org.honeybeartech.deimos.backup.skip: "/media, /temp, /app/logs"
+    ports:
+      - "8265:8265" # web UI: keep it on the LAN
+      - "8266:8266" # server port for Tdarr nodes on other machines
+    volumes:
+      - ${TDARR_SERVER_PATH:?set TDARR_SERVER_PATH in .env}:/app/server
+      - ${TDARR_CONFIGS_PATH:?set TDARR_CONFIGS_PATH in .env}:/app/configs
+      - ${TDARR_LOGS_PATH:?set TDARR_LOGS_PATH in .env}:/app/logs
+      - ${TDARR_CACHE_PATH:?set TDARR_CACHE_PATH in .env}:/temp
+      # Tdarr stores every file's path under /media in its database: keep the container path.
+      - ${MEDIA_PATH:?set MEDIA_PATH in .env}:/media
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8265/api/v2/status"]
+
+  spoolman:
+    image: ghcr.io/donkie/spoolman:0.22.1@sha256:238ea5bfb2eeda4436c39f54e73df5fef4ee904fb7c291617588b856786fe0ef
+    container_name: spoolman
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      PUID: ${PUID:?set PUID in .env}
+      PGID: ${PGID:?set PGID in .env}
+    ports:
+      - "7912:8000" # web UI and REST API: keep it on the LAN
+    volumes:
+      - ${SPOOLMAN_DATA_PATH:?set SPOOLMAN_DATA_PATH in .env}:/home/app/.local/share/spoolman
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/api/v1/health"]
+
+  ams:
+    # Bambu Lab AMS to Spoolman sync (the project is now called HaspelSync; this is the image the host runs today).
+    # The printers' serial numbers, addresses and access codes live in /app/printers/printers.json, in plain text:
+    # never in this repository, and backups of it are secret.
+    image: ghcr.io/rdiger-36/bambulab-ams-spoolman-filamentstatus:1.1.1-dev@sha256:930d742154267931a44ce7560535b8550c201f7a50cc05b323c4e756eccb396b
+    container_name: bambulab-ams-spoolman-filamentstatus
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      # Spoolman in this stack, by its service name; the public URL is what the app's links point at.
+      SPOOLMAN_ENDPOINT: http://spoolman:8000
+      SPOOLMAN_FQDN: ${SPOOLMAN_PUBLIC_URL:?set SPOOLMAN_PUBLIC_URL in .env}
+      UPDATE_INTERVAL: "120000"
+      MODE: automatic
+      NEVER_MERGE_IF_TAG: "true"
+    labels:
+      org.honeybeartech.deimos.backup.skip: "/app/logs"
+    ports:
+      - "4000:4000" # web UI: keep it on the LAN
+    volumes:
+      - ${AMS_PRINTERS_PATH:?set AMS_PRINTERS_PATH in .env}:/app/printers
+      - ${AMS_LOGS_PATH:?set AMS_LOGS_PATH in .env}:/app/logs
+    depends_on:
+      spoolman:
+        condition: service_healthy
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/"]

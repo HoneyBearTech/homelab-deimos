@@ -10,6 +10,7 @@
     "caps": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "cap_add": ["NET_ADMIN", "SYS_ADMIN"], "healthcheck": {"test": ["CMD", "true"]}},
     "hostnet": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "network_mode": "host", "healthcheck": {"test": ["CMD", "true"]}},
     "hostpid": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "pid": "host", "healthcheck": {"test": ["CMD", "true"]}},
+    "devices": {"image": "ghcr.io/haveagitgat/tdarr:2.86.01@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "devices": [{"source": "/dev/dri", "target": "/dev/dri", "permissions": "rwm"}, "/dev/fuse:/dev/fuse"], "healthcheck": {"test": ["CMD", "true"]}},
     "socket": {"image": "portainer/agent:2.33.2@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "volumes": [{"type": "bind", "source": "/var/run/docker.sock", "target": "/var/run/docker.sock"}], "healthcheck": {"test": ["CMD", "true"]}},
     "no-healthcheck": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
     "healthcheck-disabled": {"image": "lscr.io/linuxserver/radarr:6.0.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "healthcheck": {"disable": true}},

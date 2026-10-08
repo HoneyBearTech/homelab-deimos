@@ -75,6 +75,9 @@ jobs:
           cp .env.example .env
           docker compose config --quiet
           docker compose config --format json | python scripts/check_compose.py
+          # The host also runs compose.gpu.yaml (Tdarr's GPU reservation); it must pass the policy too.
+          COMPOSE_FILE=compose.yaml:compose.gpu.yaml docker compose config --format json |
+            python scripts/check_compose.py
 
   smoke:
     # A required check on main, like "Checks + tests", so an image that doesn't start can't be auto-merged.

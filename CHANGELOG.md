@@ -8,6 +8,14 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- `compose.yaml`: Tdarr 2.86.01 (server with an internal node), Spoolman 0.22.1 and the AMS app (HaspelSync,
+  1.1.1-dev build), each pinned by tag and digest for `linux/amd64` with a health check, at the versions the
+  server runs today. The AMS app reaches Spoolman inside the stack. Tdarr's media library, transcode cache and
+  logs and the AMS app's logs are excluded from backups.
+- `compose.gpu.yaml`: reserves the host's NVIDIA GPU for Tdarr; added on the host through `COMPOSE_FILE`, left
+  out by CI. CI checks the policy with and without it.
+- A `devices` policy rule: a service may not map host devices into its container (a GPU reservation is fine)
+  unless an allow label gives the reason.
 - Documentation: quick start, installing, upgrading, rebuilding, architecture, interfaces, security
   requirements, assurance case, dependencies, roadmap and verifying releases. Everything that depends on
   `compose.yaml`, which doesn't exist yet, is marked **Planned**.

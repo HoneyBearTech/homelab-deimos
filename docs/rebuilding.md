@@ -3,8 +3,7 @@
 How to bring the stack back on a new or wiped machine from a backup made by `scripts/backup.sh`
 ([upgrading.md](upgrading.md#backing-up)), with every service's settings and history as they were.
 
-> **Planned:** this needs `compose.yaml`, which isn't in the repository yet. The backup and restore scripts
-> exist; the rebuild is rehearsed once the stack is in place.
+> **Planned:** the rebuild hasn't been rehearsed on a scratch machine yet ([roadmap](roadmap.md)).
 
 You need: the backup directory (copied off the old host), this repository, and access to the media library.
 
