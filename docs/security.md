@@ -51,7 +51,9 @@ a non-empty reason:
   homelab-deimos ships the fixed version once it's released ([dependencies.md](dependencies.md)).
 - **The media library.** Tdarr rewrites files in it by design. A bad flow or a faulty Tdarr version can damage
   or delete them; only snapshots on the storage that holds the library protect against that.
-- **Access to the web UIs.** Most of these services have no login. Keeping them on the LAN, behind a reverse
+- **Access to the web UIs.** Most of these services have no login. HaspelSync (the AMS app) asks for a password
+  only once one is set under Settings → Network access; set one, since without it anyone on the LAN can change the
+  printer list and the Spoolman endpoint. Keeping them on the LAN, behind a reverse
   proxy's access lists, is the operator's job ([installing.md](installing.md#running-it-securely)).
 - **The Docker API behind the proxy.** socket-proxy mounts the Docker socket (an allowed exception, labelled in
   `compose.yaml`) and lets autoheal only list, inspect, restart and stop containers; a flaw in the proxy would

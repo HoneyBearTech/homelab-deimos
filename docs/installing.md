@@ -53,7 +53,8 @@ Running `main` instead of a release is possible but unsupported for anything you
 - **Web UIs on the LAN only.** Tdarr, Spoolman and the AMS app mostly have no login of their own. Don't publish
   their ports beyond the LAN; Docker-published ports bypass host firewalls such as `ufw`, so restrict them at the
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
-- **Turn on logins where a service offers them**, with long, unique passwords.
+- **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
+  Network access.
 - **Protect the media library.** Tdarr replaces files in place. Keep snapshots on the storage that holds the
   library, check new flows on a small library first, and read Tdarr's release notes before upgrading it.
 - **The GPU through the NVIDIA runtime only.** Tdarr gets the GPU as a device reservation; never run it

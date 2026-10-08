@@ -14,7 +14,7 @@ digest.
 | Spoolman | the project's own image | Inventory of filament spools: what's loaded, how much is left; web UI and REST API |
 | autoheal | the project's own image | Restarts any service whose health check fails, through socket-proxy; can post a notice to a webhook |
 | socket-proxy | LinuxServer.io's image | A filter in front of the Docker socket that lets autoheal only list, inspect, restart and stop containers |
-| AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used |
+| AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used, read from the print's sliced file (fetched over FTPS) |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
 agent) come from their own projects; this stack doesn't include or manage them.
