@@ -32,6 +32,21 @@ No secret is a setting. A secret a service can only take from its environment ge
 | --- | --- | --- |
 | `autoheal.env` (optional; template [`autoheal.env.example`](../autoheal.env.example)) | `WEBHOOK_URL` | Where autoheal posts a notice for each restart (a Discord channel webhook works as is). A secret: anyone with it can post to the channel. |
 
+### `backup.env`
+
+Read by `scripts/scheduled-backup.sh` (template: [`backup.env.example`](../backup.env.example)); optional, mode
+`600`, gitignored. Read as data, never run: only these keys, one `KEY=value` per line; anything else is an error.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `BACKUP_DIR` | `backups` | Where backups are written (relative to the checkout, or absolute). |
+| `BACKUP_KEEP` | `3` | How many backups are kept in `BACKUP_DIR`; older ones are deleted. |
+| `BACKUP_REMOTE` | empty | rsync destination each backup is copied to, such as `backup-host:/volume1/deimos-backups` (an SSH alias); empty = no copy. |
+| `BACKUP_REMOTE_KEEP` | `30` | How many backups are kept at `BACKUP_REMOTE`; older ones are deleted. |
+| `BACKUP_PING_URL` | empty | An Uptime Kuma push URL (a secret), told `up` after each good run and `down` after a failed one. |
+
+Only directories named like a backup (`<date>-<time>`) are ever deleted, here or at the remote.
+
 ### Fixed in `compose.yaml`
 
 Tdarr runs its server with an internal node named `MyInternalNode` (its worker limits are stored under that name),
@@ -95,9 +110,10 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 | `make check` | `docker compose config --format json \| python scripts/check_compose.py`: the policy check |
 | `python scripts/check_compose.py [FILE] [--sbom OUT]` | Checks a resolved Compose config (from `FILE` or stdin); `--sbom` also writes a CycloneDX 1.6 SBOM of the images. Exit 0 = no violations, 1 = violations (one line each), 2 = unreadable input |
 | `make test`, `make lint` | The checker's tests and the linters |
-| `scripts/backup.sh [DIR]` | Stops the stack, archives every service's data mounts (every read-write volume or bind mount except the Docker socket, anonymous volumes and the paths in the service's `backup.skip` label: the media library, the transcode cache and the logs), `.env` and any `<service>.env` into `DIR` (default `backups/<date>-<time>`, gitignored) with a `MANIFEST` and `SHA256SUMS`, all mode `600`, then starts what was running |
+| `scripts/backup.sh [DIR]` | Archives every service's data mounts (every read-write volume or bind mount except the Docker socket, anonymous volumes and the paths in the service's `backup.skip` label: the media library, the transcode cache and the logs), `.env` and any `<service>.env` into `DIR` (default `backups/<date>-<time>`, gitignored) with a `MANIFEST`, `NETWORKS` (the address ranges of networks the stack joins but doesn't create), `VERSION` (the checkout's `git describe`) and `SHA256SUMS`, all mode `600`. Each service is stopped only while its own mounts are archived and started again if it was running. Exit 0 = backup complete |
+| `scripts/scheduled-backup.sh` | Runs `scripts/backup.sh` into `BACKUP_DIR/<date>-<time>`, copies it to `BACKUP_REMOTE` with rsync (`SHA256SUMS` last), deletes all but the newest `BACKUP_REMOTE_KEEP` there and `BACKUP_KEEP` here, and reports to `BACKUP_PING_URL` ([`backup.env`](#backupenv)). Run nightly by the systemd user units in `deploy/systemd/`. Exit 0 = backup complete and copied |
 | `scripts/restore.sh [--yes] DIR [SERVICE...]` | Verifies `DIR/SHA256SUMS`, checks the `MANIFEST`, asks for confirmation (unless `--yes`), stops the services, replaces the contents of each listed mount with its archive, and starts what was running. Writes only mounts the service still has read-write; never the Docker socket or a path in the service's `backup.skip` label |
-| `make smoke` | `scripts/smoke-test.sh`: starts every service under a separate Compose project with throwaway directories, no GPU and no published ports, waits until all are healthy, round-trips a backup and restore over every data mount, checks that excluded mounts were neither archived nor overwritten, then removes what it created. Exit 0 = all healthy and restored |
+| `make smoke` | `scripts/smoke-test.sh`: starts every service under a separate Compose project with throwaway directories, no GPU and no published ports, waits until all are healthy, round-trips a backup and restore over every data mount, checks that excluded mounts were neither archived nor overwritten, runs the scheduled backup against a stand-in backup server, then removes what it created. Exit 0 = all healthy and restored |
 
 ## Outbound connections
 
@@ -105,7 +121,8 @@ From the host: the image registries (GitHub Container Registry) on `docker compo
 storage. From the services: Tdarr downloads its components and plugin updates from its project's servers;
 Spoolman fetches the SpoolmanDB filament catalogue from `donkie.github.io`; Tdarr nodes on
 other machines connect to port 8266; the AMS app connects to each printer on the LAN over MQTT
-(port 8883) and FTPS (port 990), and to Spoolman inside the stack.
+(port 8883) and FTPS (port 990), and to Spoolman inside the stack. The scheduled backup to `BACKUP_REMOTE` (rsync,
+usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 
 ## Release files
 

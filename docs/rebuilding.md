@@ -45,7 +45,7 @@ Don't install an auto-updater such as Watchtower ([installing.md](installing.md#
 
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
-git checkout vX.Y.Z      # the release the backup was taken with, or newer; verify it (verifying-releases.md)
+git checkout vX.Y.Z      # the backup's VERSION, or a newer release; verify it (verifying-releases.md)
 cp /path/to/backup/env/.env .env && chmod 600 .env
 ```
 

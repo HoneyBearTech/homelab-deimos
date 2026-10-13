@@ -22,7 +22,7 @@ live. The reasoning behind these requirements is in the [assurance case](assuran
 5. **Releases are verifiable.** Release files are listed in a `SHA256SUMS` signed keylessly by the release
    workflow, with SLSA provenance and an SBOM of the pinned images ([verifying-releases.md](verifying-releases.md)).
 6. **Backups don't leak and can't reach the media.** `scripts/backup.sh` writes archives readable only by the
-   user who ran it, and `scripts/restore.sh` writes only the mounts the backup's checksummed `MANIFEST` lists and
+   user who ran it (the scheduled copy off the host keeps those modes), and `scripts/restore.sh` writes only the mounts the backup's checksummed `MANIFEST` lists and
    the service still has, never the media library or any other path a service excludes with its
    `org.honeybeartech.deimos.backup.skip` label.
 
@@ -62,6 +62,10 @@ a non-empty reason:
   doesn't limit the Docker API, so any Dozzle that can reach the agent's port, and anyone who can use that
   Dozzle's web UI, can see every container's logs. It is an allowed exception (label in `compose.yaml`); keep its
   port on the LAN.
+- **Backups off the host from the host itself.** The scheduled backup can delete old backups on the backup
+  server, so whoever controls this host can delete or overwrite them too. Snapshots or a versioned copy on the
+  backup server, outside this host's reach, are what protect them; a recycle bin may not see deletions made over
+  rsync (Synology's doesn't).
 - **The GPU driver and runtime.** The NVIDIA driver and Container Toolkit on the host are trusted and kept up to
   date by the operator.
 - **The host.** Anyone with root, `docker` group membership or write access to `.env` or the services' data
@@ -76,4 +80,6 @@ a non-empty reason:
 | Logins of services that have them | each service's data | the repository, `.env`, issues, logs you paste |
 | Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
 | autoheal's webhook URL | `autoheal.env` (gitignored, mode `600`) | same |
+| The backup push monitor's URL | `backup.env` (gitignored, mode `600`) | same |
+| The key for the backup server | the backup user's `~/.ssh` on the host | same |
 | Backups of the data | off the host, mode `600` | anywhere public |

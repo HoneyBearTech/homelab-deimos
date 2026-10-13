@@ -82,8 +82,11 @@ newest and the template for tooling, workflows and policy files.
   Pinned at the versions the host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama,
   the Argus agent, the Portainer agent.
 - Tooling (ported from homelab-ares): `scripts/check_compose.py` (Python, standard library only:
-  policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `smoke-test.sh`, `lib.sh` (bash, must run
-  on macOS' bash 3.2); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
+  policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `scheduled-backup.sh`, `smoke-test.sh`,
+  `lib.sh` (bash, must run on macOS' bash 3.2); `scheduled-backup.sh` (run nightly by the systemd user units in
+  `deploy/systemd/`) pushes with rsync to `BACKUP_REMOTE` and pings an Uptime Kuma push monitor, with its settings
+  in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU rsync and macOS'
+  openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
   dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor).
 - Releases (`release.yml`, on a `v*.*.*` tag): policy check, source archive, CycloneDX SBOM,
@@ -105,7 +108,7 @@ newest and the template for tooling, workflows and policy files.
 make test     # checker tests + coverage floor (no Docker, no network)
 make lint     # ruff check, ruff format --check, yamllint --strict, shellcheck -x
 make check    # docker compose config --format json | scripts/check_compose.py  (needs .env and compose.yaml)
-make smoke    # scripts/smoke-test.sh: throwaway project, healthy, backup/restore round trip (needs Docker)
+make smoke    # scripts/smoke-test.sh: throwaway project, healthy, backup/restore + scheduled backup (needs Docker)
 make config   # docker compose config (resolved file)
 ```
 Release (only when the owner asks): as in homelab-ares' CLAUDE.md: CHANGELOG section in a PR, then a signed

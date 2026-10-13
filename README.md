@@ -67,7 +67,7 @@ in the [quick start](docs/quick-start.md).
 docker compose ps                 # what's running
 docker compose logs -f <service>  # one service's log
 make check                        # policy check: every image pinned, nothing privileged
-scripts/backup.sh                 # back up every service's data, never the media library
+scripts/backup.sh                 # back up every service's data (stops each briefly), never the media library
 ```
 
 Upgrading to a new release: [docs/upgrading.md](docs/upgrading.md).

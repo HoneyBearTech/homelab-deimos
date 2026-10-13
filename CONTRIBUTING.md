@@ -41,7 +41,8 @@ the checker's unit tests with a coverage floor, `docker compose config` and the 
 ([`scripts/smoke-test.sh`](scripts/smoke-test.sh)), on an amd64 runner like the server (without a GPU), starts
 every service with throwaway directories and volumes, fails unless each one reports healthy within five
 minutes, runs a backup and restore round trip over every data mount, checks that mounts excluded from backups
-(the media library) are neither archived nor overwritten, and, once the stack has autoheal, checks that it
+(the media library) are neither archived nor overwritten, runs the scheduled backup against a stand-in backup
+server, and, once the stack has autoheal, checks that it
 restarts a container that turns unhealthy. CodeQL, dependency review, a DCO check and OpenSSF Scorecard also run
 on the repository.
 
