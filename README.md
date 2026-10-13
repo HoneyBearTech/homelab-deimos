@@ -44,8 +44,9 @@ Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an 
 
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
-one. New versions arrive as Dependabot pull requests that CI checks and the maintainer merges;
-nothing on the host updates itself.
+one. New versions arrive as Dependabot pull requests that CI checks: patch and minor updates merge on their own
+once the checks pass, while major updates and every Tdarr update wait for the maintainer. A merge changes only
+this repository; nothing on the host updates itself.
 
 ## Getting started
 
@@ -68,7 +69,12 @@ docker compose ps                 # what's running
 docker compose logs -f <service>  # one service's log
 make check                        # policy check: every image pinned, nothing privileged
 scripts/backup.sh                 # back up every service's data (stops each briefly), never the media library
+scripts/restore.sh <backup-dir>   # put a backup back (verifies its checksums, asks first)
 ```
+
+For unattended backups, `scripts/scheduled-backup.sh` (run nightly by the systemd user units in
+[`deploy/systemd/`](deploy/systemd/)) copies each backup off the host with rsync and reports to an Uptime Kuma push
+monitor ([installing](docs/installing.md#scheduled-backups)).
 
 Upgrading to a new release: [docs/upgrading.md](docs/upgrading.md).
 
@@ -92,7 +98,9 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | `AMS_LOGS_PATH` | `/srv/appdata/ams/logs` | The AMS app's logs |
 
 autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
-[`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored).
+[`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored). The scheduled backup's settings, including
+its push monitor URL, go in `backup.env` (template [`backup.env.example`](backup.env.example), mode `600`,
+gitignored); both files are optional.
 
 Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 
@@ -107,11 +115,13 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - autoheal never gets the Docker socket: it goes through a proxy that only lets it list, inspect, restart and
   stop containers.
 - The Dozzle agent reads logs through the Docker socket: keep its port (7007) on the LAN.
-- Secrets (logins, API keys, printer credentials) live only in each service's data, never in this repository or
-  `.env`. Backups contain them: keep them private and off the host.
+- Secrets (logins, API keys, printer credentials) live in each service's data, and the webhook and push monitor
+  URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
+  private and off the host.
 - Don't run an auto-updater such as Watchtower on these containers; upgrade by release instead.
-- The policy check refuses privileged containers, added capabilities, host networking and Docker socket
-  mounts unless a service documents why ([docs/security.md](docs/security.md)).
+- The policy check refuses unpinned images, privileged containers, added capabilities, the host's network or
+  PID namespace, Docker socket mounts and device mappings unless a service documents why
+  ([docs/security.md](docs/security.md)).
 
 Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
 
