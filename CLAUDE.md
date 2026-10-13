@@ -62,7 +62,8 @@ newest and the template for tooling, workflows and policy files.
   `scripts/check_compose.py` enforces it in CI and in the release workflow. Exceptions in use (the owner asked for
   autoheal 2026-10-08, with the same exceptions as on ares): `socket-proxy` (`docker-socket`, read-only: filters
   the API down to list/inspect/restart/stop for autoheal, internal network, no port), `autoheal` (`latest`: the
-  image's only maintained tag). Don't add more without the owner agreeing.
+  image's only maintained tag), `dozzle-agent` (`docker-socket`, read-only mount; an agent for the homelab's Dozzle
+  hub on another host, port 7007, owner 2026-10-13). Don't add more without the owner agreeing.
 - **Every service has a health check and the `autoheal: "true"` label** (except autoheal itself). autoheal must
   never get the socket itself, only `tcp://socket-proxy:2375`.
 - **Never change the live server** (Deimos) without the owner asking: no `docker compose up`, no edits to
@@ -71,12 +72,13 @@ newest and the template for tooling, workflows and policy files.
 - Every setting goes through `.env` (`${VAR:?…}` in compose when required) and is listed in `.env.example`
   and `docs/interfaces.md`.
 - **Container paths and ports are load-bearing**: Tdarr stores library paths in its database, and the reverse
-  proxy and Home Assistant reach the services by their published ports. Adopt the existing data and keep paths
-  and ports the same; see the cutover plan in Chronos.
+  proxy and Home Assistant reach the services by their published ports, and the Dozzle hub reaches the agent on
+  port 7007. Adopt the existing data and keep paths and ports the same; see the cutover plan in Chronos.
 
 ## Stack
-- Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 5 services), upstream images: Tdarr (server with an
-  internal node), Spoolman, the AMS app (HaspelSync, still under its old image name), autoheal + socket-proxy.
+- Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 6 services), upstream images: Tdarr (server with an
+  internal node), Spoolman, the AMS app (HaspelSync, still under its old image name), autoheal + socket-proxy, a
+  Dozzle agent (for the homelab's Dozzle hub on another host).
   Pinned at the versions the host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama,
   the Argus agent, the Portainer agent.
 - Tooling (ported from homelab-ares): `scripts/check_compose.py` (Python, standard library only:

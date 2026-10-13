@@ -11,6 +11,7 @@ the secure design principles it follows, and how common weaknesses are countered
 | The media library | A faulty Tdarr version or flow rewrites or deletes files | Tdarr updates read and merged by the maintainer, never auto-merged; flows tested on a small library first; snapshots on the library's storage (operator) |
 | The media library | A backup or restore script touching it | Paths in a service's `org.honeybeartech.deimos.backup.skip` label are never archived by `backup.sh`, and `restore.sh` refuses to write them even if a backup lists them; the smoke test checks both |
 | The web UIs | Someone on the LAN uses a service without logging in | LAN only, behind a reverse proxy's access lists; no ports published beyond the LAN ([installing.md](installing.md#running-it-securely)) |
+| Container logs, the Docker API | Someone on the LAN points a Dozzle of their own at the Dozzle agent's port | Port 7007 on the LAN only; the socket mounted read-only (which protects the socket file, not the API); a labelled, reviewed exception ([security.md](security.md#what-it-doesnt-protect)) |
 | The host's devices | The GPU granted by running privileged | GPU only as a device reservation through the NVIDIA runtime; `privileged` refused by the policy check |
 | Logins, printer credentials | Committed to the public repository | Kept in the services' data, never in the repo; `.gitignore`; GitHub push protection; gitleaks over the history in CI |
 | Logins, printer credentials | Leaked through a backup | `scripts/backup.sh` writes backups readable only by the user who ran it; documented as secret, to be kept off the host |
@@ -33,14 +34,15 @@ data or the media library's storage.
 3. **LAN → web UIs.** Not published beyond the LAN; reached through a reverse proxy with access lists.
 4. **Tdarr → media library.** Read-write by design; the boundary is the library's own snapshots.
 5. **Containers → host.** Only each service's data directories, the media library and the GPU; no host
-   namespaces. The one socket mount (socket-proxy, read-only, filtered, on an internal network) is a reviewed,
-   labelled exception; autoheal reaches Docker only through it.
+   namespaces. The two socket mounts are reviewed, labelled exceptions: socket-proxy (read-only, filtered, on an
+   internal network), through which alone autoheal reaches Docker, and the Dozzle agent (read-only, its port on
+   the LAN only), which serves logs to the homelab's Dozzle.
 6. **Pull requests → CI.** Fork pull requests get a read-only token and no secrets.
 
 ## Secure design principles
 
-- **Least privilege**: no added capabilities, no host namespaces, one filtered socket mount; the GPU as a device
-  reservation; read-only CI tokens raised per job.
+- **Least privilege**: no added capabilities, no host namespaces, two labelled read-only socket mounts (one of
+  them filtered); the GPU as a device reservation; read-only CI tokens raised per job.
 - **Fail-safe defaults**: the policy check fails on anything it doesn't recognise as allowed; an exception
   needs a reason, in the file, in review. `restore.sh` refuses anything in a backup it can't account for.
 - **Complete mediation**: every change to what runs passes through a pull request and the same checks;

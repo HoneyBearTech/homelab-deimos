@@ -39,6 +39,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an 
   Bambu Lab printers' automatic material systems hold and what each print uses
 - **autoheal**: restarts any of them whose health check fails, through a socket proxy that only lets it list,
   inspect, restart and stop containers
+- **A Dozzle agent**: serves the containers' logs to the homelab's Dozzle on another host, which shows every
+  host's logs in one web UI
 
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
@@ -104,6 +106,7 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - The GPU is given to Tdarr as a device reservation through the NVIDIA runtime, never by running it privileged.
 - autoheal never gets the Docker socket: it goes through a proxy that only lets it list, inspect, restart and
   stop containers.
+- The Dozzle agent reads logs through the Docker socket: keep its port (7007) on the LAN.
 - Secrets (logins, API keys, printer credentials) live only in each service's data, never in this repository or
   `.env`. Backups contain them: keep them private and off the host.
 - Don't run an auto-updater such as Watchtower on these containers; upgrade by release instead.

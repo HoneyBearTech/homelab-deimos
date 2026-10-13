@@ -14,6 +14,7 @@ digest.
 | Spoolman | the project's own image | Inventory of filament spools: what's loaded, how much is left; web UI and REST API |
 | autoheal | the project's own image | Restarts any service whose health check fails, through socket-proxy; can post a notice to a webhook |
 | socket-proxy | LinuxServer.io's image | A filter in front of the Docker socket that lets autoheal only list, inspect, restart and stop containers |
+| Dozzle agent | the project's own image | Agent that serves the containers' logs (read through the Docker socket) to the homelab's Dozzle on another host, which shows every host's logs in one web UI |
 | AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used, read from the print's sliced file (fetched over FTPS) |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
@@ -31,6 +32,7 @@ agent) come from their own projects; this stack doesn't include or manage them.
 | Tdarr nodes on other machines | Connect to Tdarr's server port to take transcode jobs (optional) |
 | The printers | Report their material systems and prints to the AMS app over MQTT; serve the sliced files over FTPS |
 | Home automation | Reads Spoolman through its API (optional) |
+| The homelab's Dozzle | Connects to the Dozzle agent's port to show this host's container logs in its web UI |
 
 ## Data flow
 
@@ -46,6 +48,7 @@ AMS app ──MQTT / FTPS──▶ printers on the LAN
 AMS app ──REST──▶ Spoolman (inside the stack)
 
 autoheal ──(internal network)──▶ socket-proxy ──read-only socket──▶ Docker: restarts unhealthy containers
+Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only socket──▶ Docker: container logs
 ```
 
 Each service keeps its settings and database in its own data directory (see

@@ -58,6 +58,10 @@ a non-empty reason:
 - **The Docker API behind the proxy.** socket-proxy mounts the Docker socket (an allowed exception, labelled in
   `compose.yaml`) and lets autoheal only list, inspect, restart and stop containers; a flaw in the proxy would
   expose more. It has no published port and sits on an internal network that only autoheal joins.
+- **Dozzle's access to Docker.** The Dozzle agent needs the Docker socket to read logs; read-only mounting
+  doesn't limit the Docker API, so any Dozzle that can reach the agent's port, and anyone who can use that
+  Dozzle's web UI, can see every container's logs. It is an allowed exception (label in `compose.yaml`); keep its
+  port on the LAN.
 - **The GPU driver and runtime.** The NVIDIA driver and Container Toolkit on the host are trusted and kept up to
   date by the operator.
 - **The host.** Anyone with root, `docker` group membership or write access to `.env` or the services' data
