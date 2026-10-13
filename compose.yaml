@@ -1,6 +1,7 @@
 # The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory) and the AMS app that
 # keeps Spoolman in step with the printers' material systems, plus autoheal (behind a filtering socket proxy) to
-# restart any of them that turns unhealthy. Every setting comes from .env (template: .env.example; reference:
+# restart any of them that turns unhealthy, and a Dozzle agent that serves the host's container logs to the
+# homelab's Dozzle on another host. Every setting comes from .env (template: .env.example; reference:
 # docs/interfaces.md); the one secret, autoheal's optional webhook, from autoheal.env (template:
 # autoheal.env.example). Every image is pinned as name:tag@sha256:<digest> and publishes linux/amd64;
 # Dependabot proposes updates. scripts/check_compose.py enforces the policy (docs/security.md#policy).
@@ -118,6 +119,26 @@ services:
     healthcheck:
       <<: *healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/"]
+
+  # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
+  # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version.
+  dozzle-agent:
+    image: amir20/dozzle:v11.3.2@sha256:0d8cf9702f422d65a7e8ad238785dc6b05b2b9c43c945f6bbdf3358ad5da5f6c
+    container_name: dozzle-agent
+    restart: unless-stopped
+    command: agent
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "/dozzle", "healthcheck"]
+    labels:
+      autoheal: "true"
+      org.honeybeartech.deimos.allow.docker-socket: >-
+        The Dozzle agent reads container logs through the Docker API for the Dozzle hub. The socket is mounted
+        read-only, which protects the socket file but not the API, so the agent's port must stay on the LAN.
+    ports:
+      - "7007:7007" # agent port for the Dozzle hub: keep it on the LAN
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
   autoheal:
     image: willfarrell/autoheal:latest@sha256:e7f42d5365c7c4490dd0cafc2858bb9fd2d64a274448d2de2bb5c386f1af7a0f

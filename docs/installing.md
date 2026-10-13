@@ -59,6 +59,8 @@ Running `main` instead of a release is possible but unsupported for anything you
   library, check new flows on a small library first, and read Tdarr's release notes before upgrading it.
 - **The GPU through the NVIDIA runtime only.** Tdarr gets the GPU as a device reservation; never run it
   privileged to reach the GPU.
+- **The Dozzle agent can read every container's logs and, through the Docker socket, control Docker**, for any
+  Dozzle that connects to it. Keep its port (7007) on the LAN only.
 - Keep `.env` at mode `600`; it holds no secrets by design, but it describes your host.
 - Back up the services' data directories ([upgrading.md](upgrading.md#backing-up)).
 - Don't add services that mount the Docker socket, run privileged or use the host network without a documented

@@ -51,11 +51,12 @@ UI, whose settings the backups cover.
 | AMS app (HaspelSync) | `ghcr.io/rdiger-36/haspelsync` | 4000 → 4000 | Web UI (LAN only; set a password under Settings → Network access) |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
+| Dozzle agent | `amir20/dozzle` | 7007 → 7007 | Agent for the homelab's Dozzle on another host (LAN only); no web UI of its own |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
-`/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, autoheal's process and the proxy's `/_ping`.
-autoheal checks every 10 seconds and gives a service 30 seconds to stop before restarting it; a service gets 10
-minutes after it starts before failed checks count.
+`/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, autoheal's process, the proxy's `/_ping` and
+the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to
+stop before restarting it; a service gets 10 minutes after it starts before failed checks count.
 
 ## GPU
 
@@ -76,14 +77,14 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 | `/home/app/.local/share/spoolman` | `SPOOLMAN_DATA_PATH` | Spoolman: database |
 | `/app/printers` | `AMS_PRINTERS_PATH` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `AMS_LOGS_PATH` | AMS app: logs (not backed up) |
-| `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy (an allowed exception, see below) |
+| `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
 
 ## Labels
 
 | Label | Meaning |
 | --- | --- |
-| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`). |
-| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app and socket-proxy. |
+| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, socket-proxy and the Dozzle agent. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
 
 ## Commands

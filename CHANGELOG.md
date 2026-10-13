@@ -6,6 +6,14 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- A Dozzle agent (`dozzle agent`, port 7007) for the homelab's Dozzle hub on another host, which shows every host's
+  logs in one web UI, pinned at 11.3.2, the hub's version. It mounts the Docker socket read-only (a labelled policy
+  exception: keep port 7007 on the LAN), has a health check and is restarted by autoheal. A `dozzle-agent`
+  container started outside Compose has to be removed (`docker rm -f dozzle-agent`) before the first
+  `docker compose up`.
+
 ### Changed
 
 - Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates forward on the first start, so
