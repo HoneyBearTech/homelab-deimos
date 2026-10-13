@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Smoke test of the stack: start every service in compose.yaml with throwaway settings, wait until each one reports
 # healthy, then mark every data mount, take a backup, change the data, restore the backup and check that the data
-# and health came back (and that mounts excluded from backups were neither archived nor overwritten), make a test container unhealthy and check that autoheal restarts it (when the stack has
-# autoheal), and remove everything it created. CI runs it on every change; `make smoke` runs it locally.
+# and health came back (and that mounts excluded from backups were neither archived nor overwritten), run the
+# scheduled backup against a stand-in backup server, make a test container unhealthy and check that autoheal restarts
+# it (when the stack has autoheal), and remove everything it created. CI runs it on every change; `make smoke` runs
+# it locally.
 # Without a compose.yaml there is nothing to test, and it says so and passes.
 #
 # It stays away from any real installation on the same Docker host: its own Compose project, settings from
@@ -169,6 +171,8 @@ else
   "$root/scripts/backup.sh" "$work/backup"
   [ "$(compose ps --services --status running | wc -l)" -eq "$(compose config --services | wc -l)" ] ||
     fail "backup.sh didn't start every service again"
+  [ -s "$work/backup/VERSION" ] || fail "the backup has no VERSION"
+  [ -f "$work/backup/NETWORKS" ] || fail "the backup has no NETWORKS"
 
   for target in "${targets[@]}"; do
     IFS=$'\t' read -r service mount <<<"$target"
@@ -194,6 +198,28 @@ else
   done
   compose up --detach --wait --wait-timeout "$timeout"
   echo "Every data mount was restored, and every service is healthy again"
+fi
+
+# The unattended backup, copying to a stand-in for the backup server (a local directory, which rsync treats the same
+# way) that already holds two old backups and a directory that isn't one; keeping two there and one here must leave
+# the newer old one and the new one there, only the new one here, and the other directory alone.
+if [ ${#targets[@]} -gt 0 ]; then
+  echo "Scheduled backup: copy off the host and prune old backups"
+  mkdir -p "$work/scheduled/20200101-000000" "$work/remote/20200101-000000" "$work/remote/20200102-000000" \
+    "$work/remote/keep-me"
+  printf 'BACKUP_DIR=%s\nBACKUP_KEEP=1\nBACKUP_REMOTE=%s\nBACKUP_REMOTE_KEEP=2\n' "$work/scheduled" "$work/remote" \
+    >"$work/backup.env"
+  BACKUP_ENV_FILE=$work/backup.env "$root/scripts/scheduled-backup.sh"
+  entries() { find "$1" -mindepth 1 -maxdepth 1 -exec basename {} \; | sort | tr '\n' ' '; }
+  new=$(entries "$work/scheduled" | tr -d ' ')
+  [[ $new =~ ^[0-9]{8}-[0-9]{6}$ ]] || fail "expected only the new backup in BACKUP_DIR, found: $new"
+  [ "$(entries "$work/remote")" = "20200102-000000 $new keep-me " ] ||
+    fail "wrong backups kept at the remote: $(entries "$work/remote")"
+  (cd "$work/remote/$new" && sha256 -c --quiet SHA256SUMS) || fail "the copy off the host doesn't match its SHA256SUMS"
+  [ -z "$(find "$work/remote/$new" -perm -004)" ] || fail "the copy off the host is readable by other users"
+  [ "$(compose ps --services --status running | wc -l)" -eq "$(compose config --services | wc -l)" ] ||
+    fail "scheduled-backup.sh didn't leave every service running"
+  echo "The scheduled backup was copied intact, and only the newest backups were kept"
 fi
 
 if $has_autoheal; then

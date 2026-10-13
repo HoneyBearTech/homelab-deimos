@@ -8,6 +8,13 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- Scheduled backups: `scripts/scheduled-backup.sh` takes a backup, copies it off the host with rsync, keeps the
+  newest few here and there, and reports to an Uptime Kuma push monitor. Settings in the optional, gitignored
+  `backup.env` (template `backup.env.example`); systemd user units in `deploy/systemd/` run it nightly at 04:00
+  (docs/installing.md#scheduled-backups). The smoke test runs it against a stand-in backup server.
+- Each backup records `NETWORKS` (the address ranges of networks the stack joins but doesn't create) and `VERSION`
+  (the checkout's `git describe`, the release to rebuild with).
+
 - A Dozzle agent (`dozzle agent`, port 7007) for the homelab's Dozzle hub on another host, which shows every host's
   logs in one web UI, pinned at 11.3.2, the hub's version. It mounts the Docker socket read-only (a labelled policy
   exception: keep port 7007 on the LAN), has a health check and is restarted by autoheal. A `dozzle-agent`
@@ -15,6 +22,9 @@ All notable changes to homelab-deimos are documented here. The format follows
   `docker compose up`.
 
 ### Changed
+
+- `scripts/backup.sh` stops one service at a time, only while its own data is archived, instead of the whole stack;
+  services with nothing to archive (autoheal, socket-proxy, the Dozzle agent) keep running.
 
 - Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates forward on the first start, so
   back up first ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default (`SPOOLMAN_LEGACY_CLIENT`

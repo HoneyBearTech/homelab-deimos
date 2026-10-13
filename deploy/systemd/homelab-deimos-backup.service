@@ -1,0 +1,15 @@
+# Runs scripts/scheduled-backup.sh once; started by homelab-deimos-backup.timer. A systemd user unit: install it for
+# the user who runs the stack (docs/installing.md#scheduled-backups). %h is that user's home directory: change
+# both paths if the checkout lives elsewhere.
+[Unit]
+Description=Back up the homelab-deimos stack and copy it off the host
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/homelab-deimos
+ExecStart=%h/homelab-deimos/scripts/scheduled-backup.sh
+# Runs at idle priority, so the services stay responsive while archives are compressed.
+Nice=10
+IOSchedulingClass=idle

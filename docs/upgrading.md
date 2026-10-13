@@ -16,8 +16,9 @@ anything you depend on.
 ## Backing up
 
 The state worth keeping is each service's data: Tdarr's database and settings, Spoolman's database and the AMS
-app's data. `scripts/backup.sh` stops the stack so the databases are consistent, archives each of those mounts,
-copies `.env` and any `<service>.env`, and starts again whatever was running:
+app's data. `scripts/backup.sh` stops one service at a time, archives its mounts while it is stopped so its
+database is consistent, and starts it again if it was running; services with nothing to archive keep running. It
+also copies `.env` and any `<service>.env`:
 
 ```sh
 scripts/backup.sh                       # into backups/<date>-<time>/ in the checkout (gitignored)
@@ -28,8 +29,9 @@ It **never** archives the media library, the transcode cache or Tdarr's logs: th
 is protected by snapshots on the storage that holds it; the cache and logs are disposable.
 
 The directory holds one `<service>--<path>.tar.gz` per mount, the settings under `env/`, a `MANIFEST` naming
-each archive's service, container path, host path and image, and `SHA256SUMS`. Everything in it is readable
-only by the user who ran the backup. **Copy it off the host.**
+each archive's service, container path, host path and image, `NETWORKS`, `VERSION` (the checkout it was taken
+with) and `SHA256SUMS`. Everything in it is readable only by the user who ran the backup. **Copy it off the
+host.** [Scheduled backups](installing.md#scheduled-backups) do this nightly and copy each backup off the host.
 
 ## Upgrading
 

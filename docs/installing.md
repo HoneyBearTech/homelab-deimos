@@ -48,6 +48,65 @@ point makes it see a new library. Take a backup of the old data first.
 
 Running `main` instead of a release is possible but unsupported for anything you depend on.
 
+## Scheduled backups
+
+`scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync, keeps
+only the newest few in both places and reports to an Uptime Kuma push monitor. A systemd timer runs it nightly.
+Every setting is in the optional `backup.env` ([interfaces.md](interfaces.md#backupenv)). The backups hold every
+login and the printers' access codes: copy them only to a machine you trust as much as this one. The media library
+is never in them; protect it with snapshots where it is stored.
+
+1. **On the backup server**, create a folder for the backups and a user that can write only there and use rsync
+   over SSH (on a Synology: a shared folder, a non-admin user with read/write on that folder only, rsync allowed
+   under Application Privileges, SSH on, the rsync service on under File Services, and the user home service on so
+   the user can have an `authorized_keys`). Whoever controls this host can delete or overwrite what it copied
+   there, so keep older versions where the backup user can't reach them: snapshots of the folder, or a versioned
+   copy of it made on the server after the nightly backup (on a Synology without Btrfs, a Hyper Backup task with
+   rotation, into a folder the backup user has no access to). A recycle bin isn't enough: Synology's doesn't keep
+   files deleted over rsync.
+2. **On this host**, as the user who runs the stack, install rsync and curl, and create a key used only for the
+   backups, with an alias for it in `~/.ssh/config`:
+
+   ```sh
+   sudo apt install -y rsync curl
+   ssh-keygen -t ed25519 -N '' -f ~/.ssh/homelab-deimos-backup
+   ```
+
+   ```text
+   Host backup-host
+     HostName <the backup server's address>
+     User <the backup user>
+     IdentityFile ~/.ssh/homelab-deimos-backup
+     IdentitiesOnly yes
+   ```
+
+   Add the public key to the backup user's `~/.ssh/authorized_keys` on the server, prefixed with
+   `restrict,from="<this host's address>"` (no shell or forwarding, and only from this host), then check that
+   `rsync --list-only backup-host:/volume1/<folder>/` works without a password prompt.
+3. **Settings**: `cp backup.env.example backup.env && chmod 600 backup.env`, then set
+   `BACKUP_REMOTE=backup-host:/volume1/<folder>` and, optionally, the retention and `BACKUP_PING_URL`. For the
+   ping, add a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
+4. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is archived: Spoolman and
+   the AMS app for seconds, Tdarr for as long as its database takes to compress, and a transcode it was running
+   starts over.
+5. **Schedule it**, with the systemd user units in [`deploy/systemd/`](../deploy/systemd/) (they expect the
+   checkout at `~/homelab-deimos`; edit both paths in the `.service` file if it's elsewhere). Pick an hour when
+   Tdarr's queue is quiet and nobody prints (`OnCalendar` in the `.timer` file). Lingering lets the timer run while
+   you're logged out:
+
+   ```sh
+   mkdir -p ~/.config/systemd/user
+   cp deploy/systemd/homelab-deimos-backup.* ~/.config/systemd/user/
+   sudo loginctl enable-linger "$USER"
+   systemctl --user daemon-reload
+   systemctl --user enable --now homelab-deimos-backup.timer
+   systemctl --user list-timers homelab-deimos-backup.timer   # next run: 04:00, plus up to 10 minutes
+   journalctl --user -u homelab-deimos-backup                 # what the last runs did
+   ```
+
+Restore a copy from the backup server as [rebuilding.md](rebuilding.md) describes; `scripts/restore.sh` verifies
+its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refused.
+
 ## Running it securely
 
 - **Web UIs on the LAN only.** Tdarr, Spoolman and the AMS app mostly have no login of their own. Don't publish
@@ -62,7 +121,8 @@ Running `main` instead of a release is possible but unsupported for anything you
 - **The Dozzle agent can read every container's logs and, through the Docker socket, control Docker**, for any
   Dozzle that connects to it. Keep its port (7007) on the LAN only.
 - Keep `.env` at mode `600`; it holds no secrets by design, but it describes your host.
-- Back up the services' data directories ([upgrading.md](upgrading.md#backing-up)).
+- Back up the services' data directories ([upgrading.md](upgrading.md#backing-up)), nightly and off the host
+  ([scheduled backups](#scheduled-backups)).
 - Don't add services that mount the Docker socket, run privileged or use the host network without a documented
   reason; the policy check refuses them ([security.md](security.md)).
 - Don't run an auto-updater (such as Watchtower) on these containers: it would replace the pinned, reviewed

@@ -20,7 +20,8 @@ file changes with them, in the same pull request.
 
 - Rehearse the documented rebuild ([rebuilding.md](rebuilding.md)) on a scratch machine, including the GPU
   driver and the NVIDIA Container Toolkit.
-- Scheduled backups copied off the host.
+- Done: scheduled backups copied off the host (`scripts/scheduled-backup.sh`, a systemd timer), reported to Uptime
+  Kuma.
 
 ## Later
 
