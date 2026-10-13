@@ -2,8 +2,8 @@
 
 The Docker Compose stack for Deimos, the owner's homelab media-processing and 3D-printing server (Ubuntu 24.04,
 amd64, a VM with an NVIDIA GPU passed through): Tdarr, Spoolman and the AMS app, every image pinned by tag and
-digest so the server can be upgraded and rebuilt from this repository. The services still run from their old
-setup on the host until the cutover (plan in Chronos).
+digest so the server can be upgraded and rebuilt from this repository. Deimos runs the stack from a checkout of a
+release tag (cut over 2026-10-13); its nightly backups go off the host.
 
 ## Before Making Structural Changes
 Read the project's notes first. They live outside this repo, in the owner's Obsidian vault **Chronos** at
@@ -21,8 +21,10 @@ Keep them current as work lands: tick roadmap checkboxes, add a Pass-Map row per
 Decisions-Log entries. **The notes never go into this repo.** Chronos is versioned in its own private repo;
 only commit or push it when the owner asks. The old in-repo vault path `.obsidian-docs/` stays gitignored.
 
-The sibling repos `~/GitHub/homelab-ares` and `~/GitHub/homelab-atlas` follow the same pattern; ares is the
-newest and the template for tooling, workflows and policy files.
+The sibling repos (`~/GitHub/homelab-ares`, `-atlas`, `-helios`, `-hyperion`) follow the same pattern.
+homelab-ares is the template for the homelab stacks: tooling that isn't specific to this host's services
+(checker, backup scripts, smoke test, workflows) is kept the same as ares'; a change here that isn't about this
+host's services goes to ares too (owner 2026-10-13).
 
 ## This repo is public
 - No hostnames, IP addresses, internal or public domains, host paths, NFS exports, Portainer stack names or
@@ -57,6 +59,12 @@ newest and the template for tooling, workflows and policy files.
   test checks both. Tdarr's lists `/media`, `/temp` and `/app/logs`; the AMS app's `/app/logs`. Tdarr writes to
   the library, so treat Tdarr upgrades and flow changes as risky to data: Tdarr is excluded from Dependabot
   auto-merge.
+- `scripts/backup.sh` archives every read-write volume or bind mount except the Docker socket, anonymous volumes
+  and the mounts a service's `backup.skip` label lists; paths inside a mount that its
+  `org.honeybeartech.deimos.backup.exclude` label lists (none in use) are left out of the archive. Each service
+  is stopped only while its data is copied; compression (pigz or gzip) runs after it starts again. `restore.sh`
+  only writes mounts listed in the backup's MANIFEST that the service still mounts read-write, never a skipped
+  mount, and leaves excluded paths and nested mounts in place. Keep it that way when adding a service.
 - **No privileged containers, added capabilities, host network/PID, Docker socket mounts or device mappings** unless the
   service carries `org.honeybeartech.deimos.allow.<rule>: "<reason>"` and the owner agreed.
   `scripts/check_compose.py` enforces it in CI and in the release workflow. Exceptions in use (the owner asked for
@@ -81,14 +89,22 @@ newest and the template for tooling, workflows and policy files.
   Dozzle agent (for the homelab's Dozzle hub on another host).
   Pinned at the versions the host ran before the cutover; updates follow it. Not in this repo: Open WebUI, Ollama,
   the Argus agent, the Portainer agent.
-- Tooling (ported from homelab-ares): `scripts/check_compose.py` (Python, standard library only:
+- Tooling (kept the same as homelab-ares'): `scripts/check_compose.py` (Python, standard library only:
   policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `scheduled-backup.sh`, `smoke-test.sh`,
   `lib.sh` (bash, must run on macOS' bash 3.2); `scheduled-backup.sh` (run nightly by the systemd user units in
   `deploy/systemd/`) pushes with rsync to `BACKUP_REMOTE` and pings an Uptime Kuma push monitor, with its settings
   in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU rsync and macOS'
   openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
-  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor).
+  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor). CI logs in to Docker Hub with
+  the read-only `DOCKERHUB_*` secrets when they exist (anonymous otherwise) and logs out before the smoke test
+  starts a container (GOVERNANCE.md).
+- GitLab copy: the owner's self-hosted GitLab (CE, LAN only; host facts in Chronos) is to hold a mirror, as for
+  homelab-ares. GitHub stays the home (OpenSSF badges, Scorecard, Dependabot, releases); every change goes to
+  GitHub as a PR, never to GitLab. `.gitlab-ci.yml` mirrors GitHub on a schedule (fast-forward only,
+  `MIRROR_TOKEN` CI/CD variable) and re-runs the daemon-free checks, the policy check with and without
+  `compose.gpu.yaml`; the smoke test stays GitHub-only. The owner still has to create the GitLab project, the
+  `MIRROR_TOKEN` variable and the schedule: until then the file does nothing.
 - Releases (`release.yml`, on a `v*.*.*` tag): policy check, source archive, CycloneDX SBOM,
   `SHA256SUMS` signed with cosign keyless, SLSA provenance, GitHub Release from the tag's `CHANGELOG.md`
   section. No images are built or published.

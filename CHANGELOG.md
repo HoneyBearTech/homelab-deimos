@@ -6,7 +6,33 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Label `org.honeybeartech.deimos.backup.exclude`: paths inside a data mount (comma-separated, at any depth) that a
+  backup leaves out of the mount's archive and a restore leaves in place. A path outside every data mount, or with
+  `..` or a pattern character, fails the backup and the restore before anything stops. No service uses it yet;
+  the `backup.skip` labels (Tdarr's `/media`, `/temp`, `/app/logs`, the AMS app's `/app/logs`) back up exactly
+  what they did before.
+- CI logs in to Docker Hub with a read-only token when the repository has one (`DOCKERHUB_USERNAME`,
+  `DOCKERHUB_TOKEN`), so image pulls no longer hit the runners' shared anonymous limit; without it, CI pulls
+  anonymously as before. The smoke test logs out before any container starts (GOVERNANCE.md).
+- `.gitlab-ci.yml` for a mirror on the maintainer's self-hosted GitLab, which re-runs the checks that need no
+  Docker daemon. It does nothing until that GitLab project, its `MIRROR_TOKEN` and a schedule exist.
+
 ### Changed
+
+- `scripts/backup.sh` stops each service only while its data is copied, and compresses the copies after starting
+  it again, with `pigz` on every core when it's installed (else `gzip`): Tdarr and the other services are down for
+  a shorter time. Install pigz on the host (`docs/installing.md#scheduled-backups`). Services that Compose stopped
+  along with the one being backed up (the AMS app, with Spoolman) are started again too, and the copy runs without
+  a log driver, so Docker no longer writes the whole archive into the copying container's log.
+- A mount inside another mount is archived on its own and left out of the outer mount's archive, and a restore of
+  the outer mount leaves it in place. (No service mounts one inside another today.)
+- The nightly backup runs in the best-effort I/O class at the lowest priority instead of the idle class, which
+  could keep a stopped service waiting behind every other disk user on the host. **Re-install the systemd units**
+  after upgrading (`docs/upgrading.md`); the timer stays at 04:00.
+- The backup scripts, smoke test and workflows are kept the same as homelab-ares' (the template for the homelab
+  stacks).
 
 - docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as not reachable (rechecked on
   2.96.01: the container never runs them); Tdarr has 465 open alerts.

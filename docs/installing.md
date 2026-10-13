@@ -64,11 +64,12 @@ is never in them; protect it with snapshots where it is stored.
    copy of it made on the server after the nightly backup (on a Synology without Btrfs, a Hyper Backup task with
    rotation, into a folder the backup user has no access to). A recycle bin isn't enough: Synology's doesn't keep
    files deleted over rsync.
-2. **On this host**, as the user who runs the stack, install rsync and curl, and create a key used only for the
-   backups, with an alias for it in `~/.ssh/config`:
+2. **On this host**, as the user who runs the stack, install rsync and curl (and pigz, which compresses the
+   archives on every core instead of one), and create a key used only for the backups, with an alias for it in
+   `~/.ssh/config`:
 
    ```sh
-   sudo apt install -y rsync curl
+   sudo apt install -y rsync curl pigz
    ssh-keygen -t ed25519 -N '' -f ~/.ssh/homelab-deimos-backup
    ```
 
@@ -86,9 +87,9 @@ is never in them; protect it with snapshots where it is stored.
 3. **Settings**: `cp backup.env.example backup.env && chmod 600 backup.env`, then set
    `BACKUP_REMOTE=backup-host:/volume1/<folder>` and, optionally, the retention and `BACKUP_PING_URL`. For the
    ping, add a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
-4. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is archived: Spoolman and
-   the AMS app for seconds, Tdarr for as long as its database takes to compress, and a transcode it was running
-   starts over.
+4. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is copied (compression
+   runs after it starts again): Spoolman and the AMS app for seconds, Tdarr for as long as its database takes to
+   copy, and a transcode it was running starts over.
 5. **Schedule it**, with the systemd user units in [`deploy/systemd/`](../deploy/systemd/) (they expect the
    checkout at `~/homelab-deimos`; edit both paths in the `.service` file if it's elsewhere). Pick an hour when
    Tdarr's queue is quiet and nobody prints (`OnCalendar` in the `.timer` file). Lingering lets the timer run while

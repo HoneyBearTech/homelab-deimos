@@ -10,6 +10,8 @@ After=network-online.target
 Type=oneshot
 WorkingDirectory=%h/homelab-deimos
 ExecStart=%h/homelab-deimos/scripts/scheduled-backup.sh
-# Runs at idle priority, so the services stay responsive while archives are compressed.
+# Runs at a low priority, so the services stay responsive while archives are compressed. Not the idle I/O class: a
+# service is stopped while its data is copied, and idle I/O waits behind every other disk user on the host.
 Nice=10
-IOSchedulingClass=idle
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

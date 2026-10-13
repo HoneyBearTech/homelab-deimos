@@ -16,9 +16,9 @@ anything you depend on.
 ## Backing up
 
 The state worth keeping is each service's data: Tdarr's database and settings, Spoolman's database and the AMS
-app's data. `scripts/backup.sh` stops one service at a time, archives its mounts while it is stopped so its
-database is consistent, and starts it again if it was running; services with nothing to archive keep running. It
-also copies `.env` and any `<service>.env`:
+app's data. `scripts/backup.sh` stops one service at a time, copies its mounts while it is stopped so its
+database is consistent, and starts it again if it was running before compressing the copies; services with nothing
+to archive keep running. It also copies `.env` and any `<service>.env`:
 
 ```sh
 scripts/backup.sh                       # into backups/<date>-<time>/ in the checkout (gitignored)
@@ -45,6 +45,10 @@ docker compose ps
 
 Then check each service's web UI and logs (`docker compose logs <service>`) for migration errors, that Tdarr
 still sees the GPU and its library, and run one small transcode before resuming the queue.
+
+If the release changed the systemd units in `deploy/systemd/` (the CHANGELOG says so), install them again as in
+[installing.md](installing.md#scheduled-backups): copy them to `~/.config/systemd/user/` and run
+`systemctl --user daemon-reload`.
 
 ## Rolling back
 

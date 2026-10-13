@@ -59,11 +59,25 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.images.outputs.matrix) }}
     steps:
+      # Logged in to Docker Hub as in CI (GOVERNANCE.md#the-projects-own-secrets), and Trivy reads the login
+      # (read-only) for the image it scans; every image here is pinned and trusted.
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          mkdir -p "$HOME/.docker"
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::notice::No Docker Hub token; pulling anonymously"
+            exit 0
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
       - name: Scan
         env:
           IMAGE: ${{ matrix.image }}
         run: |
-          docker run --rm -v "$PWD:/out" \
+          docker run --rm -v "$PWD:/out" -v "$HOME/.docker:/docker-config:ro" -e DOCKER_CONFIG=/docker-config \
             aquasec/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa \
             image --image-src remote --platform linux/amd64 --scanners vuln --severity HIGH,CRITICAL \
             --ignore-unfixed --no-progress --format sarif --output /out/trivy.sarif "$IMAGE"
@@ -73,3 +87,7 @@ jobs:
         with:
           sarif_file: trivy.sarif
           category: trivy-${{ matrix.name }}
+
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout

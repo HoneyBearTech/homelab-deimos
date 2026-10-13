@@ -1,0 +1,107 @@
+# GitLab CI for the copy of this repository on the maintainer's self-hosted GitLab (Community Edition, on the LAN).
+# GitHub is the project's home: every change lands there first, through a pull request that GitHub Actions
+# (.github/workflows/) must pass. This pipeline keeps the GitLab copy in step and re-checks what arrives:
+# - mirror: on a schedule, fetches main and the tags from GitHub and pushes them here, fast-forward only, so a
+#   commit made on GitLab directly stops the mirror rather than being overwritten. GitLab CE can't pull-mirror, and
+#   GitHub can't reach this GitLab. It pushes with a project access token (Maintainer, write_repository) held in the
+#   masked, protected CI/CD variable MIRROR_TOKEN, and doesn't run without it.
+# - the checks of ci.yml's "Checks + tests" that need no Docker daemon, on every commit pushed here: lint, unit
+#   tests with the coverage floor, the secret scan, the workflow lint and the Compose policy check (of compose.yaml
+#   alone and with compose.gpu.yaml, as on the host). The smoke test needs a daemon (Docker-in-Docker, so a
+#   privileged runner), and runs on GitHub only.
+# Images are pinned by tag and digest. Dependabot doesn't read this file: they're bumped by hand
+# (docs/dependencies.md).
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "push"
+
+default:
+  interruptible: true
+  timeout: 15m
+
+stages: [mirror, config, checks]
+
+.checks:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+
+mirror:
+  stage: mirror
+  image:
+    name: alpine/git:v2.54.0@sha256:a4bb51f1a3553df194ce679fc1db721d8bfba2046fa1a88fe9d4ac551ffbce25
+    entrypoint: [""]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MIRROR_TOKEN
+  variables:
+    GIT_STRATEGY: none
+    MIRROR_SOURCE: https://github.com/HoneyBearTech/homelab-deimos.git
+  # The token reaches git through a credential helper for this GitLab only, never a URL or an argument. The repo
+  # is bare: git refuses to fetch into a checked-out branch, which main would be wherever init.defaultBranch=main.
+  script:
+    - git init -q --bare mirror && cd mirror
+    - git config "credential.$CI_SERVER_URL.helper" '!f() { echo username=oauth2; echo "password=$MIRROR_TOKEN"; }; f'
+    - git fetch --no-tags "$MIRROR_SOURCE" "refs/heads/main:refs/heads/main" "refs/tags/*:refs/tags/*"
+    - git push "$CI_SERVER_URL/$CI_PROJECT_PATH.git" "refs/heads/main:refs/heads/main" "refs/tags/*:refs/tags/*"
+
+# docker compose config needs only the CLI, not a daemon; the resolved file goes to the policy check.
+compose-config:
+  extends: .checks
+  stage: config
+  image: docker:29.8.2-cli@sha256:35cfcf893c20f2931f4909151b5407aaaeab711277de7ce8b8f521f095d54c32
+  script:
+    - cp .env.example .env
+    - docker compose config --quiet
+    - docker compose config --format json > compose.resolved.json
+    - COMPOSE_FILE=compose.yaml:compose.gpu.yaml docker compose config --format json > compose.gpu.resolved.json
+  artifacts:
+    paths: [compose.resolved.json, compose.gpu.resolved.json]
+    expire_in: 1 day
+
+checks:
+  extends: .checks
+  stage: checks
+  needs: [compose-config]
+  image: python:3.14.8-slim-trixie@sha256:f85c5697265c178cc6887276c55fe16cf3d14ca35c3df6a5eab3b360534a55d2
+  variables:
+    PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  script:
+    - python -m pip install -q --root-user-action=ignore --require-hashes --no-deps -r requirements-dev.txt
+    - ruff check .
+    - ruff format --check .
+    - yamllint --strict .
+    - shellcheck -x scripts/*.sh
+    - coverage run -m pytest -q
+    - coverage report
+    - python scripts/check_compose.py < compose.resolved.json
+    - python scripts/check_compose.py < compose.gpu.resolved.json
+
+# The whole history, and a failure if gitleaks ever scans nothing (it would otherwise report "no leaks found").
+gitleaks:
+  extends: .checks
+  stage: checks
+  needs: []
+  image:
+    name: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - set -o pipefail
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - gitleaks git --redact --no-banner --no-color . 2>&1 | tee gitleaks.log
+    - if grep -Eq ' 0 commits scanned|ERR' gitleaks.log; then echo "gitleaks didn't scan the history"; exit 1; fi
+
+actionlint:
+  extends: .checks
+  stage: checks
+  needs: []
+  image:
+    name: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+    entrypoint: [""]
+  script:
+    - actionlint -color
