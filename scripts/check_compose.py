@@ -9,7 +9,10 @@ service that breaks a rule. A service may break a rule on purpose only when it c
 - ``latest``: the tag isn't ``latest``.
 - ``build``: the service doesn't build an image from source.
 - ``privileged``: no ``privileged: true``.
-- ``cap-add``: no added Linux capabilities.
+- ``no-new-privileges``: ``security_opt`` has ``no-new-privileges:true``.
+- ``cap-drop``: ``cap_drop`` has ``ALL``.
+- ``cap-add``: no Linux capability added beyond Docker's default set (adding back one of those after dropping
+  them all only narrows what the container gets).
 - ``host-network`` / ``host-pid``: no host network or PID namespace.
 - ``docker-socket``: no Docker socket mount (it is root on the host).
 - ``devices``: no host devices mapped into the container (a GPU is reserved through ``deploy.resources``
@@ -32,6 +35,25 @@ from typing import Any, NamedTuple
 
 ALLOW_LABEL = "org.honeybeartech.deimos.allow."
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+# The capabilities Docker gives a container by default (moby's oci/caps/defaults.go).
+DEFAULT_CAPABILITIES = frozenset(
+    {
+        "AUDIT_WRITE",
+        "CHOWN",
+        "DAC_OVERRIDE",
+        "FOWNER",
+        "FSETID",
+        "KILL",
+        "MKNOD",
+        "NET_BIND_SERVICE",
+        "NET_RAW",
+        "SETFCAP",
+        "SETGID",
+        "SETPCAP",
+        "SETUID",
+        "SYS_CHROOT",
+    }
+)
 SBOM_NAMESPACE = uuid.UUID("6f1f6c55-4b8e-4f0a-9a57-1d1f4d2b7a10")
 
 type Service = dict[str, Any]
@@ -69,6 +91,11 @@ def parse_image(ref: str) -> ImageRef:
     return ImageRef(name, tag, digest or None)
 
 
+def capability(name: str) -> str:
+    """Normalise a capability name as Docker accepts it (``net_raw``, ``CAP_NET_RAW``) to ``NET_RAW``."""
+    return name.upper().removeprefix("CAP_")
+
+
 def allowed(service: Service, rule: str) -> bool:
     """Whether the service opts out of a rule with a non-empty reason label."""
     labels = service.get("labels") or {}
@@ -89,6 +116,20 @@ def image_violations(service: Service) -> list[tuple[str, str]]:
     return found
 
 
+def hardening_violations(service: Service) -> list[tuple[str, str]]:
+    """Return the capability rules this service breaks, as (rule, detail) pairs."""
+    found = []
+    options = [str(option).replace("=", ":") for option in service.get("security_opt") or []]
+    if "no-new-privileges:true" not in options and "no-new-privileges" not in options:
+        found.append(("no-new-privileges", "doesn't set security_opt no-new-privileges:true"))
+    if "ALL" not in {capability(c) for c in service.get("cap_drop") or []}:
+        found.append(("cap-drop", "doesn't drop every capability (cap_drop: [ALL])"))
+    added = [c for c in service.get("cap_add") or [] if capability(c) not in DEFAULT_CAPABILITIES]
+    if added:
+        found.append(("cap-add", "adds capabilities beyond Docker's defaults: " + ", ".join(added)))
+    return found
+
+
 def runtime_violations(service: Service) -> list[tuple[str, str]]:
     """Return the privilege and isolation rules this service breaks, as (rule, detail) pairs."""
     found = []
@@ -96,8 +137,6 @@ def runtime_violations(service: Service) -> list[tuple[str, str]]:
         found.append(("build", "builds an image instead of pulling a pinned one"))
     if service.get("privileged"):
         found.append(("privileged", "runs privileged"))
-    if service.get("cap_add"):
-        found.append(("cap-add", "adds capabilities: " + ", ".join(service["cap_add"])))
     if service.get("network_mode") == "host":
         found.append(("host-network", "uses the host network"))
     if service.get("pid") == "host":
@@ -121,7 +160,7 @@ def check(config: dict[str, Any]) -> list[Violation]:
     """Every violation in a resolved Compose config, sorted by service."""
     violations = []
     for name, service in sorted((config.get("services") or {}).items()):
-        for rule, detail in image_violations(service) + runtime_violations(service):
+        for rule, detail in image_violations(service) + hardening_violations(service) + runtime_violations(service):
             if not allowed(service, rule):
                 violations.append(Violation(name, rule, detail))
     return violations

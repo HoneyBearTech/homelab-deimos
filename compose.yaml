@@ -10,6 +10,14 @@
 # COMPOSE_FILE=compose.yaml:compose.gpu.yaml. CI and the smoke test run this file alone, on runners without a GPU.
 name: homelab-deimos
 
+# Every service starts with no Linux capabilities and can't gain privileges (setuid binaries, file capabilities);
+# a service that needs a capability adds back only that one, from Docker's default set (docs/security.md#hardening).
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 # Health check timing shared by every service; each service adds its own test. During start_period a failing check
 # doesn't count, and Docker checks every start_interval, so a healthy service shows up within seconds. The long
 # start_period keeps autoheal from restarting a service in the middle of a slow database migration after an upgrade
@@ -23,11 +31,22 @@ x-healthcheck: &healthcheck
 
 services:
   tdarr:
+    <<: *hardened
     # Server with its internal node. Every Tdarr update is merged by hand after reading its release notes (it rewrites
     # the media library), so Dependabot's auto-merge skips it.
     image: ghcr.io/haveagitgat/tdarr:2.96.01@sha256:83c4c956c85ffbf3c82f479ee2fe355b52ece32e732d8b00075afb447087a3ae
     container_name: tdarr
     restart: unless-stopped
+    # Its init (s6-overlay) runs as root and needs these of Docker's default capabilities: it takes ownership of its
+    # own directories, never /media (CHOWN), records that in /app/server/perm, which then belongs to abc
+    # (DAC_OVERRIDE), starts the server and the node as its user abc (SETUID, SETGID) and stops them on shutdown
+    # (KILL). The server and node run as abc with no capabilities, so their access to the media library is unchanged.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+      - KILL
     environment:
       TZ: ${TZ:?set TZ in .env}
       PUID: ${PUID:?set PUID in .env}
@@ -64,11 +83,16 @@ services:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8265/api/v2/status"]
 
   spoolman:
+    <<: *hardened
     # Migrates its database forward on the first start of a new version (back up first: docs/upgrading.md), and keeps
     # nightly database backups of its own in its data directory (backups/).
     image: ghcr.io/donkie/spoolman:0.27.0@sha256:7aba565eff774c6dda212d4204de8fa30bf68d513127ef875cc7ef3197a4664e
     container_name: spoolman
     restart: unless-stopped
+    # Its entrypoint starts as root and switches to its user (gosu), which needs these two.
+    cap_add:
+      - SETUID
+      - SETGID
     environment:
       TZ: ${TZ:?set TZ in .env}
       PUID: ${PUID:?set PUID in .env}
@@ -89,6 +113,7 @@ services:
         - import urllib.request; urllib.request.urlopen("http://localhost:8000/api/v1/health", timeout=5)
 
   ams:
+    <<: *hardened
     # HaspelSync: Bambu Lab AMS to Spoolman sync (formerly bambulab-ams-spoolman-filamentstatus). The printers'
     # serial numbers, addresses and access codes live in /app/printers/printers.json, in plain text, next to the
     # settings saved in its web UI (settings.json): never in this repository, and backups of it are secret.
@@ -123,6 +148,7 @@ services:
   # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
   # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version.
   dozzle-agent:
+    <<: *hardened
     image: amir20/dozzle:v11.3.2@sha256:0d8cf9702f422d65a7e8ad238785dc6b05b2b9c43c945f6bbdf3358ad5da5f6c
     container_name: dozzle-agent
     restart: unless-stopped
@@ -141,6 +167,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
   autoheal:
+    <<: *hardened
     image: willfarrell/autoheal:latest@sha256:e7f42d5365c7c4490dd0cafc2858bb9fd2d64a274448d2de2bb5c386f1af7a0f
     container_name: autoheal
     restart: unless-stopped
@@ -177,6 +204,7 @@ services:
   # listing and inspecting containers, and restarting or stopping them (CONTAINERS, ALLOW_RESTARTS). Creating,
   # starting or deleting containers, exec, images, volumes and every other POST are refused.
   socket-proxy:
+    <<: *hardened
     image: lscr.io/linuxserver/socket-proxy:3.4.6@sha256:362cadf55b3c7920189347d0f4d60b389e2f80e929581bf10793f2371aab41e5
     container_name: socket-proxy
     restart: unless-stopped

@@ -40,6 +40,21 @@ All notable changes to homelab-deimos are documented here. The format follows
   maintainer); scheduled backups, `restore.sh` and `backup.env` are listed; the policy check's full rule list; the
   opening line names the services, matching the repository description.
 
+### Security
+
+- Every service drops every Linux capability and runs with `no-new-privileges` (also with `compose.gpu.yaml`).
+  Tdarr adds back `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID` and `KILL` for its init, which runs as root and
+  starts the server and node as its own user; Spoolman adds back `SETUID` and `SETGID` to switch to its
+  user. Everything else adds back none. The table is in docs/security.md#hardening.
+- The policy check enforces it: new rules `no-new-privileges` and `cap-drop`, and `cap-add` now fails only on a
+  capability outside Docker's default set (the checker is the same as homelab-ares').
+- **Upgrading:** take a backup first. Data with unexpected file owners can now fail with `EACCES` (permission
+  denied): the AMS app, the Dozzle agent, autoheal and socket-proxy run as root without `DAC_OVERRIDE`, so a
+  directory they write must belong to root, and Tdarr's and Spoolman's must stay with `PUID`/`PGID`. The
+  hardening was tested on fresh, empty data only: after the upgrade check that Tdarr still sees the GPU, its
+  libraries and its queue, and run one small transcode before resuming it; check Spoolman and the AMS app save
+  changes. To go back, check out the previous release and `docker compose up -d`.
+
 ## [0.2.1] - 2026-10-13
 
 ### Changed
