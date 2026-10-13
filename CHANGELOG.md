@@ -6,6 +6,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-13
+
 ### Changed
 
 - Tdarr 2.86.01 → 2.96.01, the last 2.x release. It moves and copies files on network shares more reliably,
@@ -96,6 +98,7 @@ leave the media library alone, and release signing around it.
 - A release workflow that publishes a source archive, the SBOM, `SHA256SUMS` signed keylessly with cosign,
   and SLSA build provenance ([docs/verifying-releases.md](docs/verifying-releases.md)).
 
-[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/HoneyBearTech/homelab-deimos/releases/tag/v0.1.0

@@ -86,7 +86,7 @@ what runs. Updating them was the first step after the switch, one service at a t
 | --- | --- | --- | --- |
 | Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of 0.22.1's alerts are Debian packages of an 18-month-old base image. **Done in 0.2.0**, deployed 13 October 2026: the database migration was rehearsed from 0.22.1 data first |
 | AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired. **Done in 0.2.0**, deployed 13 October 2026: rehearsed from a legacy `printers.json` against Spoolman 0.27.0 first |
-| Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
+| Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library: **2.96.01 in 0.2.1** (13 October 2026), for its safer file moves and copies on network shares; it left the open alerts unchanged |
 
 After the two updates the scan on `main` reported 85 open alerts for Spoolman, HaspelSync and the old AMS app
 image, and 480 for Tdarr. **Not reachable in this stack** (73 alerts, dismissed in code scanning as "won't fix"
@@ -99,14 +99,14 @@ with this reason; which programs run was checked with `docker top` on the pinned
 | Spoolman | `perl-base` (7) | Part of the Debian base for package-manager scripts; Spoolman (`entrypoint.sh`, then uvicorn) never runs Perl. Tdarr does run Perl (for `exiftool`), so its Perl alerts stay open |
 
 **Open, waiting for upstream** (434 on 8 October: Tdarr 424, Spoolman 9, HaspelSync 1; 481 after the scan of 13
-October, Tdarr's up to 471 as advisories are published against the same bundled packages). No newer image has the
-fixed package yet; each alert closes by itself when a bump to such an image is merged and the scan runs again. None
-of the services is published beyond the LAN, and all three sit behind the homelab's reverse proxy with a LAN-only
-access list. They're re-checked monthly.
+October, Tdarr's up to 471 as advisories are published against the same bundled packages; 471 again after the move
+to 2.96.01). No newer image has the fixed package yet; each alert closes by itself when a bump to such an image is
+merged and the scan runs again. None of the services is published beyond the LAN, and all three sit behind the
+homelab's reverse proxy with a LAN-only access list. They're re-checked monthly.
 
 - **Tdarr** (424): Debian packages of its base image (190, 16 of them critical, including Perl, which `exiftool`
   uses), and the Node modules and runtimes bundled into `Tdarr_Server` and `Tdarr_Node` (232). Tdarr is closed
-  source, so only its maintainers can update these; its newest release (2.94.03) has as many. Reachable through
+  source, so only its maintainers can update these; 2.96.01, the last 2.x release, has as many. Reachable through
   the web UI and the node port on the LAN, and through crafted media files that Tdarr's FFmpeg and `exiftool`
   read.
 - **Spoolman** (9): `anyio` (one critical), `urllib3` (its web stack and HTTP client), `libpcre2`, and `setuptools`
