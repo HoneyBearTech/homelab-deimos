@@ -6,6 +6,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-13
+
 ### Added
 
 - Scheduled backups: `scripts/scheduled-backup.sh` takes a backup, copies it off the host with rsync, keeps the
@@ -14,7 +16,6 @@ All notable changes to homelab-deimos are documented here. The format follows
   (docs/installing.md#scheduled-backups). The smoke test runs it against a stand-in backup server.
 - Each backup records `NETWORKS` (the address ranges of networks the stack joins but doesn't create) and `VERSION`
   (the checkout's `git describe`, the release to rebuild with).
-
 - A Dozzle agent (`dozzle agent`, port 7007) for the homelab's Dozzle hub on another host, which shows every host's
   logs in one web UI, pinned at 11.3.2, the hub's version. It mounts the Docker socket read-only (a labelled policy
   exception: keep port 7007 on the LAN), has a health check and is restarted by autoheal. A `dozzle-agent`
@@ -25,7 +26,6 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 - `scripts/backup.sh` stops one service at a time, only while its own data is archived, instead of the whole stack;
   services with nothing to archive (autoheal, socket-proxy, the Dozzle agent) keep running.
-
 - Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates forward on the first start, so
   back up first ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default (`SPOOLMAN_LEGACY_CLIENT`
   brings the old one back), and cross-origin writes are refused. The image has no `curl` any more, so the health
@@ -82,5 +82,6 @@ leave the media library alone, and release signing around it.
 - A release workflow that publishes a source archive, the SBOM, `SHA256SUMS` signed keylessly with cosign,
   and SLSA build provenance ([docs/verifying-releases.md](docs/verifying-releases.md)).
 
-[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/HoneyBearTech/homelab-deimos/releases/tag/v0.1.0
