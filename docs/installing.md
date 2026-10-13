@@ -114,6 +114,9 @@ its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refus
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
 - **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
   Network access.
+- **HaspelSync answers only the host names it knows.** Under its IP address it works as is; reached through a
+  reverse proxy or under a DNS name, it refuses every request (`403`) until that name is added under Settings →
+  Allowed host names. Its API answers only its own web UI and callers with an API key.
 - **Protect the media library.** Tdarr replaces files in place. Keep snapshots on the storage that holds the
   library, check new flows on a small library first, and read Tdarr's release notes before upgrading it.
 - **The GPU through the NVIDIA runtime only.** Tdarr gets the GPU as a device reservation; never run it
