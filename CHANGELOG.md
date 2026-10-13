@@ -11,7 +11,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 - docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as not reachable (rechecked on
   2.96.01: the container never runs them); Tdarr has 465 open alerts.
 - README: Dependabot's patch and minor updates merge on their own (Tdarr's and major updates wait for the
-  maintainer); scheduled backups, `restore.sh` and `backup.env` are listed; the policy check's full rule list.
+  maintainer); scheduled backups, `restore.sh` and `backup.env` are listed; the policy check's full rule list; the
+  opening line names the services, matching the repository description.
 
 ## [0.2.1] - 2026-10-13
 

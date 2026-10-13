@@ -6,7 +6,7 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15290/badge)](https://www.bestpractices.dev/projects/15290)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/15290/baseline)](https://www.bestpractices.dev/projects/15290)
 
-Docker Compose stack for Deimos, a homelab Ubuntu server (24.04, amd64, with an NVIDIA GPU). Version-pinned, self-hosted services, kept as code for easy upgrades and rebuilds.
+Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an NVIDIA GPU: Tdarr, Spoolman and HaspelSync. Version-pinned, kept as code for easy upgrades and rebuilds.
 
 > [!WARNING]
 > Tdarr rewrites the files in your media library: a broken upgrade or a misconfigured flow can damage or delete
