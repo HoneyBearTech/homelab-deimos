@@ -6,6 +6,12 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- docs/installing.md: HaspelSync behind a reverse proxy or under a DNS name needs that name under Settings →
+  Allowed host names (it answers `403` until then), and its API answers only its web UI and callers with an API key.
+- docs/dependencies.md: the image updates are deployed; the 58 alerts for the AMS app's old image are dismissed.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

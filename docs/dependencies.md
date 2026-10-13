@@ -77,13 +77,15 @@ socket-proxy none.
 
 The images are pinned at the versions the server ran before it moved to this repository (Tdarr 2.86.01, Spoolman
 0.22.1, the AMS app's 1.1.1-dev build), so that switching the server over changes how the services run but not
-what runs. **Updating them is the first step after the switch**, one service at a time, each with a backup first
-([upgrading.md](upgrading.md)). Counts from the same scan of each project's current release (`linux/amd64`):
+what runs. Updating them was the first step after the switch, one service at a time, each with a backup first
+([upgrading.md](upgrading.md)): the server switched over on 13 October 2026 and moved to 0.2.0, with Spoolman
+0.27.0 and HaspelSync 1.3.3, the same day. Counts from the same scan of each project's current release
+(`linux/amd64`):
 
 | Image | Today | Current release | What the update does |
 | --- | --- | --- | --- |
-| Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of 0.22.1's alerts are Debian packages of an 18-month-old base image. **Done on `main`** (deployed after the switch-over): the database migration was rehearsed from 0.22.1 data, and the AMS app's 1.1.1-dev build works with it |
-| AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired. **Done on `main`** (deployed after the switch-over): rehearsed from a legacy `printers.json` against Spoolman 0.27.0 |
+| Spoolman | 0.22.1: 1,846 | 0.27.0: 16 | Almost all of 0.22.1's alerts are Debian packages of an 18-month-old base image. **Done in 0.2.0**, deployed 13 October 2026: the database migration was rehearsed from 0.22.1 data first |
+| AMS app | 1.1.1-dev: 67 | 1.3.3: 11 | Moves from a development build to a release, and to the project's new name and image, HaspelSync (`ghcr.io/rdiger-36/haspelsync`); the old image name is being retired. **Done in 0.2.0**, deployed 13 October 2026: rehearsed from a legacy `printers.json` against Spoolman 0.27.0 first |
 | Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library |
 
 After the two updates the scan on `main` reported 85 open alerts for Spoolman, HaspelSync and the old AMS app
@@ -96,10 +98,11 @@ with this reason; which programs run was checked with `docker top` on the pinned
 | Tdarr, HaspelSync | the npm command line's own modules (22: `brace-expansion`, `pacote`, `sigstore`, `tar`, …) | npm only builds the image; neither container ever runs it |
 | Spoolman | `perl-base` (7) | Part of the Debian base for package-manager scripts; Spoolman (`entrypoint.sh`, then uvicorn) never runs Perl. Tdarr does run Perl (for `exiftool`), so its Perl alerts stay open |
 
-**Open, waiting for upstream** (434: Tdarr 424, Spoolman 9, HaspelSync 1). No newer image has the fixed package
-yet; each alert closes by itself when a bump to such an image is merged and the scan runs again. None of the
-services is published beyond the LAN, and all three sit behind the homelab's reverse proxy with a LAN-only access
-list. They're re-checked monthly.
+**Open, waiting for upstream** (434 on 8 October: Tdarr 424, Spoolman 9, HaspelSync 1; 481 after the scan of 13
+October, Tdarr's up to 471 as advisories are published against the same bundled packages). No newer image has the
+fixed package yet; each alert closes by itself when a bump to such an image is merged and the scan runs again. None
+of the services is published beyond the LAN, and all three sit behind the homelab's reverse proxy with a LAN-only
+access list. They're re-checked monthly.
 
 - **Tdarr** (424): Debian packages of its base image (190, 16 of them critical, including Perl, which `exiftool`
   uses), and the Node modules and runtimes bundled into `Tdarr_Server` and `Tdarr_Node` (232). Tdarr is closed
@@ -111,9 +114,9 @@ list. They're re-checked monthly.
   Reachable through its web UI and API on the LAN.
 - **HaspelSync** (1): `proxy-addr` (critical) in its web framework, reachable through its web UI on the LAN (set
   its password, [installing.md](installing.md#running-it-securely)).
-- **The old AMS app image** (58, category `trivy-bambulab-ams-spoolman-filamentstatus`): no longer in
-  `compose.yaml`, so no scan updates them, but the server runs that image until it deploys the HaspelSync update.
-  They're dismissed ("won't fix", replaced) once it has.
+- **The old AMS app image** (58, category `trivy-bambulab-ams-spoolman-filamentstatus`): dismissed as "won't fix"
+  on 13 October 2026, once the server ran HaspelSync 1.3.3 in its place; no scan updates them, since the image is
+  no longer in `compose.yaml`.
 
 ## Licenses
 
