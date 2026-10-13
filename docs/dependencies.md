@@ -89,18 +89,19 @@ what runs. Updating them was the first step after the switch, one service at a t
 | Tdarr | 2.86.01: 480 | 2.94.03: 478 | No change: the alerts are in Tdarr's bundled Node modules and binaries, which upstream hasn't updated. Updated by hand, after reading its release notes, since it rewrites the media library: **2.96.01 in 0.2.1** (13 October 2026), for its safer file moves and copies on network shares; it left the open alerts unchanged |
 
 After the two updates the scan on `main` reported 85 open alerts for Spoolman, HaspelSync and the old AMS app
-image, and 480 for Tdarr. **Not reachable in this stack** (73 alerts, dismissed in code scanning as "won't fix"
-with this reason; which programs run was checked with `docker top` on the pinned images):
+image, and 480 for Tdarr. **Not reachable in this stack** (79 alerts, dismissed in code scanning as "won't fix"
+with this reason; which programs run was checked with `docker top` on the pinned images, and again for Tdarr on
+2.96.01):
 
 | Image | Package | Why it can't be reached |
 | --- | --- | --- |
-| Tdarr | `Tdarr_Server_Tray`, `Tdarr_Node_Tray` (44) | The desktop system-tray apps; the container runs only `Tdarr_Server`, `Tdarr_Node`, their Rust helpers and `exiftool` |
+| Tdarr | `Tdarr_Server_Tray`, `Tdarr_Node_Tray` (50) | The desktop system-tray apps; the container runs only `Tdarr_Server`, `Tdarr_Node`, their Rust helpers and `exiftool` |
 | Tdarr, HaspelSync | the npm command line's own modules (22: `brace-expansion`, `pacote`, `sigstore`, `tar`, …) | npm only builds the image; neither container ever runs it |
 | Spoolman | `perl-base` (7) | Part of the Debian base for package-manager scripts; Spoolman (`entrypoint.sh`, then uvicorn) never runs Perl. Tdarr does run Perl (for `exiftool`), so its Perl alerts stay open |
 
-**Open, waiting for upstream** (434 on 8 October: Tdarr 424, Spoolman 9, HaspelSync 1; 481 after the scan of 13
+**Open, waiting for upstream** (434 on 8 October: Tdarr 424, Spoolman 9, HaspelSync 1; 481 after the scan of 12
 October, Tdarr's up to 471 as advisories are published against the same bundled packages; 471 again after the move
-to 2.96.01). No newer image has the fixed package yet; each alert closes by itself when a bump to such an image is
+to 2.96.01; 465 once that scan's six new tray-app alerts were dismissed on 13 October). No newer image has the fixed package yet; each alert closes by itself when a bump to such an image is
 merged and the scan runs again. None of the services is published beyond the LAN, and all three sit behind the
 homelab's reverse proxy with a LAN-only access list. They're re-checked monthly.
 

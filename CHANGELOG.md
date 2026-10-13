@@ -6,6 +6,11 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as not reachable (rechecked on
+  2.96.01: the container never runs them); Tdarr has 465 open alerts.
+
 ## [0.2.1] - 2026-10-13
 
 ### Changed
