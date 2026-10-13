@@ -8,6 +8,14 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- Tdarr 2.86.01 → 2.96.01, the last 2.x release. It moves and copies files on network shares more reliably,
+  noticing a failed write before a move deletes the source; keeps files in a library whose folder can't be read
+  for the moment (a network outage) instead of dropping them; and copies finished files to NFS and SMB mounts
+  more reliably. Its Rust engine, which Tdarr's servers already switched 2.86.01 to on 11 October 2026, is past
+  its beta. No database migration or plugin changes. Back up and let the queue drain first
+  ([docs/upgrading.md](docs/upgrading.md)). If the Rust engine misbehaves, `TDARR_ENGINE=nodejs` in the Tdarr
+  service's environment brings the old one back (2.x only).
+
 - docs/installing.md: HaspelSync behind a reverse proxy or under a DNS name needs that name under Settings →
   Allowed host names (it answers `403` until then), and its API answers only its web UI and callers with an API key.
 - docs/dependencies.md: the image updates are deployed; the 58 alerts for the AMS app's old image are dismissed.
