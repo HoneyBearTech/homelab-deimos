@@ -33,9 +33,9 @@ reasoning, and may change course. Because the code is MIT-licensed, you can alwa
 | Security reporter | Anyone who reports a vulnerability | Report privately and allow time for a fix before disclosing, as described in [SECURITY.md](SECURITY.md). |
 
 Automated tools also take part: Dependabot proposes updates to the stack's images, the Python check tools and the
-GitHub Actions (patch and minor updates merge automatically once every required check passes; the maintainer merges
-major updates by hand; a merge deploys to the maintainer's server), and CI with the Compose policy check, CodeQL,
-dependency review and OpenSSF Scorecard check every change.
+GitHub Actions (patch, minor and major updates merge automatically once every required check passes; the maintainer
+merges every Tdarr update by hand; a merge deploys to the maintainer's server), and CI with the Compose policy
+check, CodeQL, dependency review and OpenSSF Scorecard check every change.
 
 ## Access to sensitive resources
 

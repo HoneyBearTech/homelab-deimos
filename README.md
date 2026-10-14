@@ -44,8 +44,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
-one. New versions arrive as Dependabot pull requests that CI checks: patch and minor updates merge on their own
-once the checks pass, while major updates and every Tdarr update wait for the maintainer. The maintainer's server
+one. New versions arrive as Dependabot pull requests that CI checks: patch, minor and major updates merge on their
+own once the checks pass, while every Tdarr update waits for the maintainer. The maintainer's server
 follows `main`: a pull agent there applies each merge within a couple of minutes
 ([upgrading](docs/upgrading.md#following-main)). Nothing updates from a registry tag by itself: what runs is always
 a commit in `main`.

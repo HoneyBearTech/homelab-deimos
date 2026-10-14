@@ -9,7 +9,8 @@ automatically instead, where the merge is the upgrade ([Following `main`](#follo
 
 1. Read the release notes (the `CHANGELOG.md` section) for every release between yours and the new one, and
    the services' own release notes, **always for Tdarr** and for any major version bump. Anything under
-   **Upgrading** needs action.
+   **Upgrading** needs action. On the maintainer's server, Dependabot's major updates arrive automatically once the
+   required checks pass, so their notes are read after they deploy.
 2. Verify the new release ([verifying-releases.md](verifying-releases.md)).
 3. Let Tdarr's queue drain, or pause it, so no transcode is interrupted halfway.
 

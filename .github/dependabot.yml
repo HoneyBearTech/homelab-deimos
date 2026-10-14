@@ -1,8 +1,8 @@
 version: 2
-# Patch and minor updates are auto-merged once every required check passes
-# (workflows/dependabot-auto-merge.yml), except Tdarr's; major updates wait for the maintainer, since a new
-# major version can migrate a service's data one way. A merge deploys: the server's pull agent applies main
-# within minutes.
+# Patch, minor and major updates are auto-merged once every required check passes
+# (workflows/dependabot-auto-merge.yml), except Tdarr's and any update Dependabot can't classify, which wait for the
+# maintainer. A merge deploys: the server's pull agent applies main within minutes, so a major update, which can
+# migrate a service's data one way, reaches the server unattended, with the nightly backup behind it.
 updates:
   # The stack's images in compose.yaml (version tag and digest).
   - package-ecosystem: "docker-compose"
