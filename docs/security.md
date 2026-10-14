@@ -52,21 +52,22 @@ a non-empty reason:
 
 What each service runs with, beyond the policy. Every service has `cap_drop: [ALL]` and
 `no-new-privileges:true` (in `compose.yaml`, so also with `compose.gpu.yaml`); the smoke test proves each one
-still starts healthy and survives a backup and restore with these settings. CI has no GPU, so Tdarr's GPU
+still starts healthy and survives a backup and restore with these settings, with its data directories owned by
+`PUID:PGID` as on the host. CI has no GPU, so Tdarr's GPU
 transcoding with these settings is checked on the host, not in CI.
 
 | Service | Capabilities added back | Read-only root filesystem | Why |
 | --- | --- | --- | --- |
-| tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged |
-| spoolman | `SETUID`, `SETGID` | no | Its entrypoint starts as root and switches to its user |
-| ams | none | no | Runs as root and writes only its printers and logs directories, which belong to root |
-| dozzle-agent | none | no | Only reads the socket, which belongs to root |
-| autoheal | none | no | Only talks to socket-proxy |
+| tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged. Writable root: s6 runs its init from `/run`, and Tdarr updates its plugins and its own files in the image |
+| spoolman | `SETUID`, `SETGID` | yes (`/tmp` in memory) | Its entrypoint starts as root and switches to its user. `PUID`/`PGID` must stay 1000 (its user's ids): for others it rewrites `/etc/passwd` |
+| ams | `DAC_OVERRIDE` | yes (`/tmp` in memory) | Runs as root and writes its printers and logs directories, which may belong to the host's user rather than root |
+| dozzle-agent | none | yes (`/tmp` in memory) | Only reads the socket, which belongs to root; writes its address file to `/tmp` |
+| autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
 
 The AMS app, the Dozzle agent, autoheal and socket-proxy run as root inside their containers, since their images
-offer nothing else. Without capabilities that root can only reach what it owns: data a root-run service must
-write has to belong to root (or to the user the service switches to).
+offer nothing else. Without capabilities that root can only reach what it owns (the AMS app keeps
+`DAC_OVERRIDE` for its two directories).
 
 ## What it doesn't protect
 

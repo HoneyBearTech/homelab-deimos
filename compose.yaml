@@ -41,6 +41,8 @@ services:
     # own directories, never /media (CHOWN), records that in /app/server/perm, which then belongs to abc
     # (DAC_OVERRIDE), starts the server and the node as its user abc (SETUID, SETGID) and stops them on shutdown
     # (KILL). The server and node run as abc with no capabilities, so their access to the media library is unchanged.
+    # Its root filesystem stays writable: s6 runs its init from /run, and Tdarr updates its plugins and its own
+    # server and node files inside the image.
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
@@ -89,10 +91,14 @@ services:
     image: ghcr.io/donkie/spoolman:0.27.0@sha256:7aba565eff774c6dda212d4204de8fa30bf68d513127ef875cc7ef3197a4664e
     container_name: spoolman
     restart: unless-stopped
-    # Its entrypoint starts as root and switches to its user (gosu), which needs these two.
+    # Its entrypoint starts as root and switches to its user (gosu), which needs these two. Keep PUID/PGID at 1000,
+    # its user's ids: for any other it rewrites /etc/passwd, which the read-only root refuses.
     cap_add:
       - SETUID
       - SETGID
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       TZ: ${TZ:?set TZ in .env}
       PUID: ${PUID:?set PUID in .env}
@@ -120,6 +126,13 @@ services:
     image: ghcr.io/rdiger-36/haspelsync:1.3.3@sha256:dee7eea6e0aad6d310cecb0488c4d46879fa32b40fcf4c025f07cf5e45a51bc6
     container_name: haspelsync
     restart: unless-stopped
+    # It runs as root; DAC_OVERRIDE lets it write its printers and logs directories when they belong to the host's
+    # user (as directories created for the stack do) rather than to root.
+    cap_add:
+      - DAC_OVERRIDE
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       TZ: ${TZ:?set TZ in .env}
       # Spoolman in this stack, by its service name; the public URL is what the app's links point at. Since 1.3 these
@@ -152,6 +165,9 @@ services:
     image: amir20/dozzle:v11.3.2@sha256:0d8cf9702f422d65a7e8ad238785dc6b05b2b9c43c945f6bbdf3358ad5da5f6c
     container_name: dozzle-agent
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp # its address file, read by the health check
     command: agent
     healthcheck:
       <<: *healthcheck
@@ -171,6 +187,7 @@ services:
     image: willfarrell/autoheal:latest@sha256:e7f42d5365c7c4490dd0cafc2858bb9fd2d64a274448d2de2bb5c386f1af7a0f
     container_name: autoheal
     restart: unless-stopped
+    read_only: true
     # autoheal exits if it can't reach the proxy, so it starts only once the proxy answers. (After a host reboot
     # Docker starts both at once; autoheal then restarts until the proxy is up, a few seconds.)
     depends_on:
