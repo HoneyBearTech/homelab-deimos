@@ -60,7 +60,7 @@ transcoding with these settings is checked on the host, not in CI.
 | --- | --- | --- | --- |
 | tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged. Writable root: s6 runs its init from `/run`, and Tdarr updates its plugins and its own files in the image |
 | spoolman | `SETUID`, `SETGID` | yes (`/tmp` in memory) | Its entrypoint starts as root and switches to its user. `PUID`/`PGID` must stay 1000 (its user's ids): for others it rewrites `/etc/passwd` |
-| ams | `DAC_OVERRIDE` | yes (`/tmp` in memory) | Runs as root and writes its printers and logs directories, which may belong to the host's user rather than root |
+| ams | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID` rather than its image's root, and writes only its printers and logs directories, which belong to that user |
 | dozzle-agent | none | yes (`/tmp` in memory) | Only reads the socket, which belongs to root; writes its address file to `/tmp` |
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |

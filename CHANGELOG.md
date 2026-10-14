@@ -45,16 +45,18 @@ All notable changes to homelab-deimos are documented here. The format follows
 - Every service drops every Linux capability and runs with `no-new-privileges` (also with `compose.gpu.yaml`).
   Tdarr adds back `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID` and `KILL` for its init, which runs as root and
   starts the server and node as its own user; Spoolman adds back `SETUID` and `SETGID` to switch to its
-  user; the AMS app adds back `DAC_OVERRIDE` to write its directories when they belong to the host's user.
-  The others add back none. The table is in docs/security.md#hardening.
+  user. The AMS app now runs as `PUID`:`PGID` instead of root, and adds back none, like the others. The table is in docs/security.md#hardening.
 - Spoolman, the AMS app, the Dozzle agent and autoheal get a read-only root filesystem (`/tmp` in memory where
   they write it), like socket-proxy already had. Tdarr's stays writable. Spoolman's `PUID`/`PGID` must now stay
   1000, its image's user.
 - The policy check enforces it: new rules `no-new-privileges` and `cap-drop`, and `cap-add` now fails only on a
   capability outside Docker's default set (the checker is the same as homelab-ares').
 - **Upgrading:** take a backup first. Data with unexpected file owners can now fail with `EACCES` (permission
-  denied): Tdarr's and Spoolman's data must stay with `PUID`/`PGID`, and the AMS app's with root or
-  `PUID`/`PGID`. The hardening was tested on fresh, empty data only: after the upgrade check that Tdarr still
+  denied): Tdarr's, Spoolman's and the AMS app's data must belong to `PUID`/`PGID`. The AMS app's
+  directories belonged to root while it ran as root: hand them over before the upgrade
+  (`sudo chown -R "$PUID:$PGID" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"`, with the values from `.env`), or it stays
+  healthy but can't save its settings, its printers or its logs. A backup taken before the upgrade restores them
+  as root's again. The hardening was tested on fresh, empty data only: after the upgrade check that Tdarr still
   sees the GPU, its libraries and its queue, and run one small transcode before resuming it; check Spoolman and
   the AMS app save changes. To go back, check out the previous release and `docker compose up -d`.
 

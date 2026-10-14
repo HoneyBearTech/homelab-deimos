@@ -86,7 +86,7 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | --- | --- | --- |
 | `TZ` | `Etc/UTC` | Time zone |
 | `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
-| `PUID`, `PGID` | `1000` | User and group Tdarr and Spoolman run as; Tdarr's must be able to read and write the media library |
+| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library |
 | `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
 | `TDARR_SERVER_PATH` | `/srv/appdata/tdarr/server` | Tdarr's database |
 | `TDARR_CONFIGS_PATH` | `/srv/appdata/tdarr/configs` | Tdarr's settings |
