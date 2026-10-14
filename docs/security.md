@@ -10,9 +10,10 @@ live. The reasoning behind these requirements is in the [assurance case](assuran
 1. **Only reviewed versions run.** Every image is pinned as `name:tag@sha256:<digest>`. A registry tag
    that is moved or hijacked doesn't change what `docker compose pull` fetches; a new version arrives only
    as a pull request that changes the digest.
-2. **No container gets more of the host than it needs.** No service runs privileged, adds Linux
-   capabilities, shares the host's network or PID namespace, or mounts the Docker socket (which is root on
-   the host), unless the exception is written into the service as a reasoned label and reviewed. The GPU is
+2. **No container gets more of the host than it needs.** Every service drops every Linux capability, adds back
+   only the ones its image needs (never more than Docker's default set) and can't gain privileges from setuid
+   binaries or file capabilities. No service runs privileged, shares the host's network or PID namespace, or
+   mounts the Docker socket (which is root on the host), unless the exception is written into the service as a reasoned label and reviewed. The GPU is
    granted as a device reservation through the NVIDIA runtime, not by privilege.
 3. **No secrets in the repository.** The services keep their logins, API keys and any printer credentials in
    their own data, outside the repository. `.env` holds settings only. Secret scanning with push protection
@@ -39,11 +40,34 @@ a non-empty reason:
 | `latest` | uses the `latest` tag |
 | `build` | builds an image instead of pulling a pinned one |
 | `privileged` | sets `privileged: true` |
-| `cap-add` | adds Linux capabilities |
+| `no-new-privileges` | doesn't set `security_opt: [no-new-privileges:true]` |
+| `cap-drop` | doesn't drop every capability (`cap_drop: [ALL]`) |
+| `cap-add` | adds a capability outside Docker's default set (adding back one of those only narrows the default) |
 | `host-network` / `host-pid` | uses the host's network or PID namespace |
 | `docker-socket` | mounts the Docker socket |
 | `devices` | maps a host device into the container (a GPU reservation under `deploy.resources` is allowed) |
 | `healthcheck` | has no health check, or disables it (one defined only in the image isn't visible to the check) |
+
+## Hardening
+
+What each service runs with, beyond the policy. Every service has `cap_drop: [ALL]` and
+`no-new-privileges:true` (in `compose.yaml`, so also with `compose.gpu.yaml`); the smoke test proves each one
+still starts healthy and survives a backup and restore with these settings, with its data directories owned by
+`PUID:PGID` as on the host. CI has no GPU, so Tdarr's GPU
+transcoding with these settings is checked on the host, not in CI.
+
+| Service | Capabilities added back | Read-only root filesystem | Why |
+| --- | --- | --- | --- |
+| tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged. Writable root: s6 runs its init from `/run`, and Tdarr updates its plugins and its own files in the image |
+| spoolman | `SETUID`, `SETGID` | yes (`/tmp` in memory) | Its entrypoint starts as root and switches to its user. `PUID`/`PGID` must stay 1000 (its user's ids): for others it rewrites `/etc/passwd` |
+| ams | `DAC_OVERRIDE` | yes (`/tmp` in memory) | Runs as root and writes its printers and logs directories, which may belong to the host's user rather than root |
+| dozzle-agent | none | yes (`/tmp` in memory) | Only reads the socket, which belongs to root; writes its address file to `/tmp` |
+| autoheal | none | yes | Only talks to socket-proxy |
+| socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
+
+The AMS app, the Dozzle agent, autoheal and socket-proxy run as root inside their containers, since their images
+offer nothing else. Without capabilities that root can only reach what it owns (the AMS app keeps
+`DAC_OVERRIDE` for its two directories).
 
 ## What it doesn't protect
 

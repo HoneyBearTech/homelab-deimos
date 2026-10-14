@@ -98,7 +98,7 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 
 | Label | Meaning |
 | --- | --- |
-| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
+| `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
 | `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, socket-proxy and the Dozzle agent. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
 | `org.honeybeartech.deimos.backup.exclude` | Paths inside a service's data mounts (comma-separated, exact container paths, at any depth) that `scripts/backup.sh` leaves out of the mount's archive and `scripts/restore.sh` leaves in place. A path that isn't inside one of the service's data mounts, or contains `..` or a pattern character (`*?[\`), makes both fail before anything stops. Not in use. |

@@ -65,8 +65,13 @@ host's services goes to ares too (owner 2026-10-13).
   is stopped only while its data is copied; compression (pigz or gzip) runs after it starts again. `restore.sh`
   only writes mounts listed in the backup's MANIFEST that the service still mounts read-write, never a skipped
   mount, and leaves excluded paths and nested mounts in place. Keep it that way when adding a service.
-- **No privileged containers, added capabilities, host network/PID, Docker socket mounts or device mappings** unless the
-  service carries `org.honeybeartech.deimos.allow.<rule>: "<reason>"` and the owner agreed.
+- **Every service is hardened** (`x-hardened`: `cap_drop: [ALL]`, `no-new-privileges:true`) and adds back only
+  capabilities from Docker's default set that its image needs, each with a comment saying why and proven by the
+  smoke test; the root filesystem is read-only (`tmpfs` for what the image writes) wherever that works cleanly
+  (docs/security.md#hardening; proposed 2026-10-13, pending the owner's review).
+- **No privileged containers, capabilities beyond Docker's defaults, host network/PID, Docker socket mounts or
+  device mappings** unless the service carries `org.honeybeartech.deimos.allow.<rule>: "<reason>"` and the owner
+  agreed.
   `scripts/check_compose.py` enforces it in CI and in the release workflow. Exceptions in use (the owner asked for
   autoheal 2026-10-08, with the same exceptions as on ares): `socket-proxy` (`docker-socket`, read-only: filters
   the API down to list/inspect/restart/stop for autoheal, internal network, no port), `autoheal` (`latest`: the

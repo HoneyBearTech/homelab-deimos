@@ -6,6 +6,7 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 DIGEST = "sha256:" + "a" * 64
+HARDENED = {"security_opt": ["no-new-privileges:true"], "cap_drop": ["ALL"], "healthcheck": {"test": ["CMD"]}}
 
 
 def load(name: str) -> dict:
@@ -46,10 +47,15 @@ def test_every_rule_is_reported_exactly() -> None:
         ("short-digest", "digest"),
         ("privileged", "privileged"),
         ("caps", "cap-add"),
+        ("caps-all", "cap-add"),
+        ("unhardened", "no-new-privileges"),
+        ("unhardened", "cap-drop"),
+        ("new-privileges", "no-new-privileges"),
+        ("partial-drop", "cap-drop"),
         ("hostnet", "host-network"),
         ("hostpid", "host-pid"),
-        ("socket", "docker-socket"),
         ("devices", "devices"),
+        ("socket", "docker-socket"),
         ("no-healthcheck", "healthcheck"),
         ("healthcheck-disabled", "healthcheck"),
         ("healthcheck-none", "healthcheck"),
@@ -62,7 +68,7 @@ def test_gpu_reservation_is_not_a_device_mapping() -> None:
     service = {
         "image": "ghcr.io/haveagitgat/tdarr:2.86.01@sha256:" + "a" * 64,
         "deploy": {"resources": {"reservations": gpu}},
-        "healthcheck": {"test": ["CMD", "true"]},
+        **HARDENED,
     }
     assert cc.check({"services": {"tdarr": service}}) == []
     service["labels"] = {cc.ALLOW_LABEL + "devices": "needs the render node"}
@@ -71,10 +77,29 @@ def test_gpu_reservation_is_not_a_device_mapping() -> None:
 
 
 def test_allow_label_needs_a_reason() -> None:
-    service = {"image": "app:latest", "labels": {cc.ALLOW_LABEL + "digest": "  "}, "healthcheck": {"test": ["CMD"]}}
+    service = {"image": "app:latest", "labels": {cc.ALLOW_LABEL + "digest": "  "}, **HARDENED}
     assert rules({"services": {"s": service}}) == {("s", "digest"), ("s", "latest")}
     service["labels"] = {cc.ALLOW_LABEL + "digest": "local test image", cc.ALLOW_LABEL + "latest": "same"}
     assert cc.check({"services": {"s": service}}) == []
+
+
+@pytest.mark.parametrize(
+    "hardening",
+    [
+        {"security_opt": ["no-new-privileges"], "cap_drop": ["all"]},
+        {"security_opt": ["label:disable", "no-new-privileges=true"], "cap_drop": ["CAP_ALL"]},
+        {"cap_add": ["CHOWN", "cap_net_raw", "CAP_NET_BIND_SERVICE"]},
+    ],
+)
+def test_hardening_spellings_and_default_capabilities_pass(hardening: dict) -> None:
+    service = {"image": f"app:1@{DIGEST}", **HARDENED, **hardening}
+    assert cc.check({"services": {"s": service}}) == []
+
+
+def test_cap_add_names_only_the_extra_capabilities() -> None:
+    service = {"image": f"app:1@{DIGEST}", **HARDENED, "cap_add": ["CHOWN", "NET_ADMIN"]}
+    [violation] = cc.check({"services": {"s": service}})
+    assert violation.detail == "adds capabilities beyond Docker's defaults: NET_ADMIN"
 
 
 def test_empty_config_has_no_violations() -> None:

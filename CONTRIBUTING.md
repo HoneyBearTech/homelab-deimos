@@ -72,7 +72,9 @@ The workflow and secret scanners run in containers; the exact commands are in
 ## Coding standards
 
 - **Compose** (`compose.yaml`): every image pinned as `name:tag@sha256:<digest>` (Dependabot updates both);
-  settings from `.env` through `${VAR}`; no `privileged`, added capabilities, host network or PID namespace,
+  settings from `.env` through `${VAR}`; every service `<<: *hardened` (`cap_drop: [ALL]`, `no-new-privileges`),
+  adding back only capabilities from Docker's default set with a comment saying why; no `privileged`,
+  capabilities beyond Docker's defaults, host network or PID namespace,
   Docker socket mount or device mapping (a GPU goes in `compose.gpu.yaml` as a reservation) unless the service
   has an `org.honeybeartech.deimos.allow.<rule>` label giving the reason; every service has a health check.
   `scripts/check_compose.py` enforces this.

@@ -41,7 +41,8 @@ data or the media library's storage.
 
 ## Secure design principles
 
-- **Least privilege**: no added capabilities, no host namespaces, two labelled read-only socket mounts (one of
+- **Least privilege**: every capability dropped and only the needed ones added back (from Docker's default set),
+  no new privileges, no host namespaces, two labelled read-only socket mounts (one of
   them filtered); the GPU as a device reservation; read-only CI tokens raised per job.
 - **Fail-safe defaults**: the policy check fails on anything it doesn't recognise as allowed; an exception
   needs a reason, in the file, in review. `restore.sh` refuses anything in a backup it can't account for.
@@ -57,7 +58,7 @@ data or the media library's storage.
 | --- | --- | --- |
 | CWE-494 (code downloaded without integrity check) | Image pulls | Digest pins; signed release checksums |
 | CWE-798 / CWE-312 (hard-coded or cleartext credentials) | Compose `environment:`, `.env`, docs | No secrets in the repo; gitleaks; push protection |
-| CWE-250 (unnecessary privileges) | Container settings, GPU access | Policy rules `privileged`, `cap-add`, `host-*`, `docker-socket`, `devices`; GPU by reservation |
+| CWE-250 (unnecessary privileges) | Container settings, GPU access | Policy rules `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-*`, `docker-socket`, `devices`; GPU by reservation; read-only root filesystems where the images allow it |
 | CWE-306 (missing authentication for critical function) | Web UIs without a login | LAN only, behind access lists; logins on where offered |
 | CWE-22 (path traversal) | Restoring a backup | `restore.sh` validates archive names and mount paths from the checksummed `MANIFEST` |
 | CWE-1104 (unmaintained third-party components) | Images, tools, Actions | Dependabot weekly; image scan; triage SLAs ([dependencies.md](dependencies.md)) |

@@ -119,9 +119,11 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
   URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
   private and off the host.
 - Don't run an auto-updater such as Watchtower on these containers; upgrade by release instead.
-- The policy check refuses unpinned images, privileged containers, added capabilities, the host's network or
-  PID namespace, Docker socket mounts and device mappings unless a service documents why
-  ([docs/security.md](docs/security.md)).
+- Every service drops every Linux capability and can't gain new privileges; Tdarr and Spoolman add back only the
+  few their init needs, from Docker's default set.
+- The policy check refuses unpinned images, privileged containers, services that keep their capabilities or can
+  gain privileges, capabilities beyond Docker's defaults, the host's network or PID namespace, Docker socket
+  mounts and device mappings unless a service documents why ([docs/security.md](docs/security.md)).
 
 Report vulnerabilities privately: [SECURITY.md](SECURITY.md).
 
