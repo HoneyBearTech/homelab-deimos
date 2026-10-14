@@ -48,11 +48,13 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 - **Image rebuilds merge automatically too**: a pull request that only moves an image to a new digest under the
   same tag (a rebuild of the same app version, with newer base packages) and changes nothing else in `compose.yaml`.
   Tdarr's rebuilds wait, like all its updates.
-- **Major updates are merged by hand**, after reading the service's release notes: a new major version can
-  migrate its data one way.
+- **Major updates merge automatically too** (owner's decision, 14 October 2026), so they reach the maintainer's
+  server unattended. A new major version can migrate its data one way: the nightly backup is the way back, since a
+  revert alone doesn't undo the migration ([upgrading.md](upgrading.md)). Tdarr's updates, and any update Dependabot
+  can't classify (such as a tag scheme it doesn't read as a version), are still merged by hand.
 - **A merge deploys.** The maintainer's server follows `main` with a pull agent, so every merge, the automatic
-  ones included, reaches it within about two minutes ([upgrading.md](upgrading.md#following-main)). That's why
-  the updates that can migrate data wait for the maintainer, who takes a backup before merging them.
+  ones included, reaches it within about two minutes ([upgrading.md](upgrading.md#following-main)). Updates that
+  merge by hand get a backup first; the automatic ones rely on the nightly backup.
 - **Dependency review** blocks a pull request that adds or changes a Python or Actions dependency with a known
   vulnerability of moderate severity or higher, or a license outside the allowlist.
 - **Nothing on the host updates from a registry.** Auto-updaters such as Watchtower are not used: they would run

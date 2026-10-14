@@ -1,10 +1,10 @@
 name: Dependabot auto-merge
 
-# Turns on GitHub's auto-merge for Dependabot's patch and minor update PRs and for image rebuilds (same tag, new
-# digest), so they're squash-merged once every required check passes (the main ruleset still decides: CI with the
-# Compose policy check, CodeQL, dependency review, signed commits). Nothing is checked out or run from the PR; the
-# job only reads Dependabot's metadata and the PR's diff and calls `gh`. A merge changes main only: a server picks
-# it up when its operator pulls and redeploys (docs/upgrading.md), never by itself.
+# Turns on GitHub's auto-merge for Dependabot's patch, minor and major update PRs and for image rebuilds (same tag,
+# new digest), so they're squash-merged once every required check passes (the main ruleset still decides: CI with
+# the Compose policy check, CodeQL, dependency review, signed commits). Nothing is checked out or run from the PR; the
+# job only reads Dependabot's metadata and the PR's diff and calls `gh`. A merge deploys: the server's pull agent
+# applies main within minutes (docs/upgrading.md).
 on: pull_request
 
 permissions:
@@ -27,15 +27,16 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      # Images, Python tools and Actions: patch and minor updates. Major updates (and any update Dependabot can't
-      # classify, such as a tag scheme it doesn't read as a version) wait for the maintainer: a new major app
-      # version can migrate its database one way.
+      # Images, Python tools and Actions: patch, minor and major updates (owner 2026-10-14). A major can migrate a
+      # service's data one way and now deploys unattended, with the nightly backup behind it. Any update Dependabot
+      # can't classify (such as a tag scheme it doesn't read as a version) still waits for the maintainer.
       # Tdarr is excluded: it rewrites the media library, so every Tdarr update is merged by hand after reading its
       # release notes.
-      - name: Enable auto-merge for patch and minor updates
+      - name: Enable auto-merge for version updates
         if: >-
           (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-major') &&
           !contains(steps.metadata.outputs.dependency-names, 'haveagitgat/tdarr')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
@@ -53,6 +54,7 @@ jobs:
           steps.metadata.outputs.package-ecosystem == 'docker_compose' &&
           steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
           steps.metadata.outputs.update-type != 'version-update:semver-minor' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-major' &&
           !contains(steps.metadata.outputs.dependency-names, 'haveagitgat/tdarr')
         run: |
           files=$(gh pr diff --name-only "$PR_URL")

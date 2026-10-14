@@ -16,6 +16,9 @@ All notable changes to homelab-deimos are documented here. The format follows
   base packages) now merge automatically once every required check passes, as on homelab-atlas. The rule merges only
   a pull request whose one changed file is `compose.yaml`, whose changed lines are all `image:` lines, and whose
   image tags stay the same. Tdarr's rebuilds wait, like all its updates.
+- Dependabot's major updates now merge automatically too once every required check passes (owner's decision,
+  14 October 2026), so they deploy to the maintainer's server unattended; the nightly backup is the way back from a
+  one-way data migration. Every Tdarr update, and any update Dependabot can't classify, is still merged by hand.
 
 ## [0.3.0] - 2026-10-14
 

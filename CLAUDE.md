@@ -44,9 +44,10 @@ host's services goes to ares too (owner 2026-10-13).
 
 ## Rules for the stack
 - **Every image is pinned as `name:tag@sha256:<digest>`.** Never `latest`, never tag-only. Dependabot
-  (`docker-compose` ecosystem) updates tag and digest together. Patch and minor updates, and image rebuilds (same tag,
-  new digest; owner 2026-10-14), auto-merge once the required checks pass; major updates wait for the owner. Every
-  merge deploys, the automatic ones included (see Deploys).
+  (`docker-compose` ecosystem) updates tag and digest together. Patch, minor and major updates (majors since owner
+  2026-10-14), and image rebuilds (same tag, new digest; owner 2026-10-14), auto-merge once the required checks pass;
+  every Tdarr update and any update Dependabot can't classify wait for the owner. Every merge deploys, the automatic
+  ones included (see Deploys).
 - **Amd64.** Every image must publish `linux/amd64`. The smoke test runs on `ubuntu-latest` and the image scan
   scans `linux/amd64`.
 - **The GPU is optional to CI.** GitHub's runners have no GPU, so the NVIDIA device reservation must not stop
@@ -138,9 +139,11 @@ host's services goes to ares too (owner 2026-10-13).
   the server (a new `.env` setting, a data migration without a recent good backup, an update this file says
   waits for the owner) or the server isn't healthy, and never turns on auto-merge (`gh pr merge --auto`)
   without the owner's OK. Never bypass a check or the ruleset.
-  Dependabot's patch and minor updates and image rebuilds still auto-merge through
-  `dependabot-auto-merge.yml` once every required check passes, so they now deploy unattended; majors and every
-  Tdarr update wait for the owner. Keeping that auto-merge is the owner's call: don't change
+  Dependabot's patch, minor and major updates (majors since owner 2026-10-14) and image rebuilds auto-merge through
+  `dependabot-auto-merge.yml` once every required check passes, so they deploy unattended (the nightly backup and a
+  revert PR are the way back; a one-way data migration needs a restore from the backup); every Tdarr update and any
+  update Dependabot can't classify wait for the owner. Claude never merges a major update itself: majors are merged
+  only by Dependabot's auto-merge or by the owner. Keeping that auto-merge is the owner's call: don't change
   `dependabot-auto-merge.yml` without it.
 
 ## Commands
