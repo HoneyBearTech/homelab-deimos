@@ -1,10 +1,10 @@
 name: Dependabot auto-merge
 
-# Turns on GitHub's auto-merge for Dependabot's patch and minor update PRs, so they're squash-merged once every
-# required check passes (the main ruleset still decides: CI with the Compose policy check, CodeQL, dependency
-# review, signed commits). Nothing is checked out or run from the PR; the job only reads Dependabot's metadata
-# and calls `gh`. A merge changes main only: a server picks it up when its operator pulls and redeploys
-# (docs/upgrading.md), never by itself.
+# Turns on GitHub's auto-merge for Dependabot's patch and minor update PRs and for image rebuilds (same tag, new
+# digest), so they're squash-merged once every required check passes (the main ruleset still decides: CI with the
+# Compose policy check, CodeQL, dependency review, signed commits). Nothing is checked out or run from the PR; the
+# job only reads Dependabot's metadata and the PR's diff and calls `gh`. A merge changes main only: a server picks
+# it up when its operator pulls and redeploys (docs/upgrading.md), never by itself.
 on: pull_request
 
 permissions:
@@ -38,6 +38,37 @@ jobs:
           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
           !contains(steps.metadata.outputs.dependency-names, 'haveagitgat/tdarr')
         run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Image rebuilds: the same tag with a new digest (a linuxserver.io `version-<app version>` or bare version tag
+      # moving to a rebuild of the same app version), which Dependabot doesn't classify (owner 2026-10-14, as on
+      # homelab-atlas). Merged only when compose.yaml is the one file changed, every changed line is an `image:`
+      # line, and the image tags before and after are the same, so no app version changes. The diff is read as
+      # text; nothing from the PR runs.
+      # Tdarr is excluded here too: every Tdarr update is merged by hand after reading its release notes.
+      - name: Enable auto-merge for image rebuilds (same tag, new digest)
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'docker_compose' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-patch' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-minor' &&
+          !contains(steps.metadata.outputs.dependency-names, 'haveagitgat/tdarr')
+        run: |
+          files=$(gh pr diff --name-only "$PR_URL")
+          diff=$(gh pr diff "$PR_URL")
+          changed=$(printf '%s\n' "$diff" | grep -E '^[-+]' | grep -vE '^(\+\+\+|---) ')
+          tags() {
+            printf '%s\n' "$changed" | sed -n "s/^$1[[:space:]]*image:[[:space:]]*//p" | sed 's/@sha256:.*//' | sort
+          }
+          before=$(tags -)
+          after=$(tags '+')
+          others=$(printf '%s\n' "$changed" | grep -cvE '^[-+][[:space:]]*image:' || true)
+          if [ "$files" = "compose.yaml" ] && [ -n "$before" ] && [ "$before" = "$after" ] && [ "$others" = 0 ]; then
+            gh pr merge --auto --squash "$PR_URL"
+          else
+            echo "Not a rebuild-only image update; left for the maintainer."
+          fi
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
