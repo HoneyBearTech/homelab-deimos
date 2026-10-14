@@ -48,7 +48,7 @@ Who can change the code, releases and project settings, as of the date of this f
 | Signing release files | the release workflow, on a version tag | Sigstore keyless signing with the job's GitHub identity; no stored key |
 | Signing commits and version tags | the maintainer | personal SSH key (public half in [`.github/allowed_signers`](.github/allowed_signers)) |
 | Mirroring the repository into the maintainer's self-hosted GitLab | the scheduled mirror job in [`.gitlab-ci.yml`](.gitlab-ci.yml) | a GitLab project access token (Maintainer role, `write_repository` only, with an expiry) in a masked, protected CI/CD variable on that GitLab; the maintainer creates and rotates it |
-| Reading the repository from the maintainer's own server (planned) | that server | a read-only deploy key that only works for this repository |
+| Reading the repository from the maintainer's own server | that server's pull agent | none: the repository is public and is fetched over HTTPS without a credential |
 | The OpenSSF Best Practices badge entry | the maintainer | GitHub sign-in |
 | Pulling public images from Docker Hub in CI without the anonymous rate limit | the workflow steps that log in (CI, image scan) | a Docker Hub access token limited to reading public repositories |
 | Security advisories and private vulnerability reports | the maintainer | GitHub |
@@ -78,26 +78,22 @@ The credentials the homelab-deimos project holds (not those of a homelab-deimos 
 services' logins, tokens and keys, which stay in that installation's data), and how they're
 handled:
 
-- **What exists**: the maintainer's GitHub account and its recovery codes; the SSH key that signs commits
-  and tags; and, once it's set up, the read-only deploy key the maintainer's own server uses to pull the
-  repository; and a Docker Hub access token with the "public repositories, read-only" scope, stored as the
-  repository secret `DOCKERHUB_TOKEN` (with `DOCKERHUB_USERNAME`) for Actions and for Dependabot, so that CI's
-  image pulls count against an account instead of the runners' shared anonymous limit. It can't push, delete
-  or read anything private. Release files are signed keylessly (Sigstore), so there is no long-lived signing
-  key.
-- **Storage**: in the maintainer's password manager, never in the repository, CI logs, issues or pull
-  requests. The deploy key's private half exists only on that server. Only the steps that log in to Docker
-  Hub reference the token; the smoke test logs out again before any container starts (the Dozzle agent and
-  the socket proxy get the Docker socket, and the images under test include Dependabot's updates), and fork
-  pull requests get no secrets and pull anonymously. GitHub secret scanning with push protection and a
-  gitleaks scan in CI block committed secrets, and `.gitignore` excludes `.env`, keys and certificates.
+- **What exists**: the maintainer's GitHub account and its recovery codes; the SSH key that signs commits and tags; and
+  a Docker Hub access token with the "public repositories, read-only" scope, stored as the repository secret
+  `DOCKERHUB_TOKEN` (with `DOCKERHUB_USERNAME`) for Actions and for Dependabot, so that CI's image pulls count against
+  an account instead of the runners' shared anonymous limit. It can't push, delete or read anything private. Release
+  files are signed keylessly (Sigstore), so there is no long-lived signing key.
+- **Storage**: in the maintainer's password manager, never in the repository, CI logs, issues or pull requests. Only the
+  steps that log in to Docker Hub reference the token; the smoke test logs out again before any container starts (the
+  Dozzle agent and the socket proxy get the Docker socket, and the images under test include Dependabot's updates), and
+  fork pull requests get no secrets and pull anonymously. GitHub secret scanning with push protection and a gitleaks
+  scan in CI block committed secrets, and `.gitignore` excludes `.env`, keys and certificates.
 - **Access**: the maintainer only; the successor reaches the GitHub account and the signing key through
   the lockbox described under Continuity.
-- **Rotation**: recovery codes are regenerated after use and at least yearly, and the lockbox updated; the
-  signing key is replaced (and `.github/allowed_signers` updated) and the deploy key revoked and replaced if
-  either may have been exposed. The Docker Hub token is created with a one-year expiry and replaced before
-  it runs out. Any secret that might have leaked is revoked and replaced at once, and the incident handled
-  as in [SECURITY.md](SECURITY.md).
+- **Rotation**: recovery codes are regenerated after use and at least yearly, and the lockbox updated; the signing key
+  is replaced (and `.github/allowed_signers` updated) if it may have been exposed. The Docker Hub token is created with
+  a one-year expiry and replaced before it runs out. Any secret that might have leaked is revoked and replaced at once,
+  and the incident handled as in [SECURITY.md](SECURITY.md).
 - A new stored secret needs a reason, is referenced only by the workflow steps that use it, and is added to
   this section in the same pull request.
 
