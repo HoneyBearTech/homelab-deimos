@@ -39,10 +39,28 @@ jobs:
       - name: Lint shell scripts (shellcheck)
         run: shellcheck -x --format gcc scripts/*.sh
 
+      # Docker Hub limits anonymous pulls per address, and the runners share theirs. With the project's read-only
+      # Docker Hub token (GOVERNANCE.md#the-projects-own-secrets) the pull counts against its account instead.
+      # Fork pull requests get no secrets and pull anonymously.
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::notice::No Docker Hub token; pulling anonymously"
+            exit 0
+          fi
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+
       - name: Lint workflows (actionlint, with shellcheck)
         run: >-
           docker run --rm -v "$PWD:/repo:ro" -w /repo
           rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout
 
       # The checkout belongs to another user inside the container, so git needs safe.directory, and the step
       # fails if gitleaks ever scans nothing (it would otherwise report "no leaks found").
@@ -90,6 +108,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Every image the smoke test runs is pulled while logged in to Docker Hub (see the "Checks + tests" job),
+      # and the login is gone before any of them starts: the Dozzle agent and the socket proxy get the Docker
+      # socket, and an image under test, such as a Dependabot update, mustn't be able to read the token.
+      - name: Pull the stack's images
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ ! -f compose.yaml ]; then
+            exit 0
+          fi
+          if [ -n "$DOCKERHUB_TOKEN" ]; then
+            printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+            trap 'docker logout' EXIT
+          else
+            echo "::notice::No Docker Hub token; pulling anonymously"
+          fi
+          { docker compose --env-file .env.example config --images; sed -n 's/^busybox=//p' scripts/lib.sh; } |
+            sort -u | while read -r image; do docker pull --quiet "$image"; done
+
+      - name: No Docker Hub login left
+        run: |
+          if grep -q 'index.docker.io' "$HOME/.docker/config.json" 2>/dev/null; then
+            echo "::error::still logged in to Docker Hub"
+            exit 1
+          fi
 
       # Every service from compose.yaml, started with throwaway directories and volumes, must report healthy
       # within five minutes, and survive a backup and restore (scripts/smoke-test.sh). Logs of every service are

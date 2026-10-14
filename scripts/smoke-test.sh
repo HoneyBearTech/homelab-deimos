@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Smoke test of the stack: start every service in compose.yaml with throwaway settings, wait until each one reports
 # healthy, then mark every data mount, take a backup, change the data, restore the backup and check that the data
-# and health came back (and that mounts excluded from backups were neither archived nor overwritten), run the
-# scheduled backup against a stand-in backup server, make a test container unhealthy and check that autoheal restarts
-# it (when the stack has autoheal), and remove everything it created. CI runs it on every change; `make smoke` runs
-# it locally.
+# and health came back (and that mounts and paths excluded from backups were neither archived nor overwritten), run
+# the scheduled backup against a stand-in backup server, make a test container unhealthy and check that autoheal
+# restarts it (when the stack has autoheal), and remove everything it created. CI runs it on every change; `make
+# smoke` runs it locally.
 # Without a compose.yaml there is nothing to test, and it says so and passes.
 #
 # It stays away from any real installation on the same Docker host: its own Compose project, settings from
@@ -58,14 +58,15 @@ cleanup() {
 networks=()
 trap cleanup EXIT
 
+data_dirs=()
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   key=${line%%=*}
   case $key in
     *_ROOT | *_PATH)
       value=$work/$(echo "$key" | tr 'A-Z_' 'a-z-')
-      # Writable by any user: some services run as a fixed uid that isn't the caller's.
-      mkdir -p "$value" && chmod 0777 "$value"
+      mkdir -p "$value"
+      data_dirs+=("$value")
       ;;
     *_PREFIX) value=${project}_ ;;
     *_VOLUME) value=${project}_$(echo "$key" | tr 'A-Z_' 'a-z-') ;;
@@ -74,6 +75,21 @@ while IFS= read -r line; do
   esac
   printf '%s=%s\n' "$key" "$value"
 done <<<"$settings" >"$work/env"
+
+# The directories are owned as on a host: by PUID:PGID with mode 0755 when the stack sets PUID (the LinuxServer.io
+# images' convention), so a service that needs more than that, such as DAC_OVERRIDE to write into a directory it
+# doesn't own, fails here rather than at a deploy. Without PUID they're writable by any user: some services run as
+# a fixed uid that isn't the caller's. chown runs as root in a throwaway container.
+puid=$(sed -n 's/^PUID=//p' "$work/env")
+pgid=$(sed -n 's/^PGID=//p' "$work/env")
+for dir in "${data_dirs[@]+"${data_dirs[@]}"}"; do
+  if [ -n "$puid" ]; then
+    docker run --rm --network none -v "$dir:/data" "$busybox" \
+      sh -c 'chown "$1:$2" /data && chmod 0755 /data' own "$puid" "${pgid:-$puid}" </dev/null
+  else
+    chmod 0777 "$dir"
+  fi
+done
 
 # Networks the stack expects to exist (external ones, named by *_NETWORK settings) are created for the test only.
 while IFS='=' read -r key value; do
@@ -114,7 +130,8 @@ YAML
 } >"$work/override.yaml"
 
 compose config --quiet
-echo "Starting $(compose config --services | wc -l | tr -d ' ') services, waiting up to ${timeout}s for them to be healthy"
+echo "Starting $(compose config --services | wc -l | tr -d ' ') services," \
+  "waiting up to ${timeout}s for them to be healthy"
 # One retry: a service that fetches something from the internet as it starts can fail on the network, not the
 # stack. A service that is really broken fails both attempts.
 if ! compose up --detach --quiet-pull --wait --wait-timeout "$timeout"; then
@@ -155,6 +172,12 @@ for service in $(compose config --services); do
     if is_dir "$id" "$mount"; then skipped+=("$service	$mount"); fi
   done < <(skipped_mounts "$id")
 done
+# Every path a service leaves out of a mount's archive (its backup.exclude label): not archived, not deleted.
+excluded=()
+for service in $(compose config --services); do
+  id=$(compose ps --all --quiet "$service")
+  while IFS= read -r path; do excluded+=("$service	$path"); done < <(label_paths "$id" "$exclude_label")
+done
 if [ ${#targets[@]} -eq 0 ]; then
   echo "No service has a data mount; skipping the backup and restore round trip"
 else
@@ -163,16 +186,26 @@ else
     docker run --rm --network none --volumes-from "$(compose ps --quiet "$service")" "$busybox" \
       sh -c 'echo kept >"$1/.smoke-skipped"' mark "$mount" </dev/null
   done
+  for entry in "${excluded[@]+"${excluded[@]}"}"; do
+    IFS=$'\t' read -r service path <<<"$entry"
+    docker run --rm --network none --volumes-from "$(compose ps --quiet "$service")" "$busybox" \
+      sh -c 'mkdir -p "$1" && echo kept >"$1/.smoke-excluded"' mark "$path" </dev/null
+  done
   echo "Backup and restore round trip over ${#targets[@]} data mount(s)"
   for target in "${targets[@]}"; do
     IFS=$'\t' read -r service mount <<<"$target"
     put_marker "$(compose ps --quiet "$service")" "$mount" backed-up
   done
   "$root/scripts/backup.sh" "$work/backup"
+  for network in "${networks[@]+"${networks[@]}"}"; do
+    grep -Eq "^$network"$'\t'"[0-9a-f.:]+/[0-9]+"$'\t' "$work/backup/NETWORKS" ||
+      fail "the backup's NETWORKS doesn't record the address range of $network"
+  done
+  # NETWORKS is written even when the stack joins no network it doesn't create (then it has only its header).
+  [ -f "$work/backup/NETWORKS" ] || fail "the backup has no NETWORKS"
+  [ -s "$work/backup/VERSION" ] || fail "the backup has no VERSION"
   [ "$(compose ps --services --status running | wc -l)" -eq "$(compose config --services | wc -l)" ] ||
     fail "backup.sh didn't start every service again"
-  [ -s "$work/backup/VERSION" ] || fail "the backup has no VERSION"
-  [ -f "$work/backup/NETWORKS" ] || fail "the backup has no NETWORKS"
 
   for target in "${targets[@]}"; do
     IFS=$'\t' read -r service mount <<<"$target"
@@ -190,6 +223,19 @@ else
       fail "$service $mount is excluded from backups but restore.sh touched it"
   done
   if [ ${#skipped[@]} -gt 0 ]; then echo "${#skipped[@]} excluded mount(s) were neither archived nor overwritten"; fi
+  for entry in "${excluded[@]+"${excluded[@]}"}"; do
+    IFS=$'\t' read -r service path <<<"$entry"
+    while IFS=$'\t' read -r archive s mount _; do
+      if [ "$s" = "$service" ] && [[ "$path" == "$mount"/* ]] &&
+        grep -qF -- "./${path#"$mount"/}/" <(tar -tzf "$work/backup/$archive"); then
+        fail "$service $path is left out of backups but is in $archive"
+      fi
+    done <"$work/backup/MANIFEST"
+    docker run --rm --network none --volumes-from "$(compose ps --all --quiet "$service"):ro" "$busybox" \
+      sh -c 'test "$(cat "$1/.smoke-excluded")" = kept' check "$path" </dev/null ||
+      fail "$service $path is left out of backups but restore.sh deleted it"
+  done
+  if [ ${#excluded[@]} -gt 0 ]; then echo "${#excluded[@]} left-out path(s) were neither archived nor deleted"; fi
 
   for target in "${targets[@]}"; do
     IFS=$'\t' read -r service mount <<<"$target"

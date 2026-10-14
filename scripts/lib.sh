@@ -14,26 +14,75 @@ sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum 
 # shellcheck disable=SC2034 # used by the scripts that source this file
 skip_label=org.honeybeartech.deimos.backup.skip
 
-# The container paths container $1 excludes from backups (its skip_label), one per line.
-skipped_mounts() {
-  docker inspect --format "{{index .Config.Labels \"$skip_label\"}}" "$1" |
+# A service label listing paths inside its data mounts (comma-separated, exact container paths) that a backup leaves
+# out of the mount's archive and a restore leaves in place: data the service re-creates or doesn't need back, too
+# large to copy every night, such as a service's logs.
+# shellcheck disable=SC2034 # used by the scripts that source this file
+exclude_label=org.honeybeartech.deimos.backup.exclude
+
+# The paths label $2 of container $1 lists, one per line.
+label_paths() {
+  docker inspect --format "{{index .Config.Labels \"$2\"}}" "$1" |
     tr ',' '\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' || true
 }
+
+# The container paths container $1 excludes from backups (its skip_label), one per line.
+skipped_mounts() { label_paths "$1" "$skip_label"; }
 
 # The data mounts of container $1, one "<container path><TAB><volume:NAME or host path>" per line: every read-write
 # volume or bind mount, except anonymous volumes (an image's own, holding nothing the stack set up), the Docker
 # socket and the paths the service's skip_label excludes. These are what a backup archives and a restore replaces.
 data_mounts() {
   local dest source skipped
-  skipped=" $(skipped_mounts "$1" | tr '\n' ' ') "
+  skipped=$(skipped_mounts "$1")
   docker inspect --format '{{range .Mounts}}{{if and .RW (or (eq .Type "volume") (eq .Type "bind"))}}'\
 '{{.Destination}}{{"\t"}}{{if .Name}}volume:{{.Name}}{{else}}{{.Source}}{{end}}{{"\n"}}{{end}}{{end}}' "$1" |
     while IFS=$'\t' read -r dest source; do
       if [ -z "$dest" ] || [[ "$source" =~ ^volume:[0-9a-f]{64}$ ]]; then continue; fi
       if [[ "$dest" == *docker.sock || "$source" == *docker.sock ]]; then continue; fi
-      if [[ "$skipped" == *" $dest "* ]]; then continue; fi
+      # Paths may contain spaces, so the skip list is compared line by line.
+      if [ -n "$skipped" ] && grep -qxF -- "$dest" <<<"$skipped"; then continue; fi
       printf '%s\t%s\n' "$dest" "$source"
     done
+}
+
+# Fails unless every path container $1's exclude_label lists is an absolute path strictly inside one of its data
+# mounts, with no pattern characters or `..` (tar and find read them as patterns), so a typo can't quietly change
+# what is backed up.
+check_excludes() {
+  local path mount mounts inside
+  mounts=$(data_mounts "$1" | cut -f1)
+  while IFS= read -r path; do
+    inside=false
+    while IFS= read -r mount; do
+      if [ -n "$mount" ] && [[ "$path" == "$mount"/?* ]]; then inside=true; fi
+    done <<<"$mounts"
+    if ! $inside || [[ "$path" == *..* || "$path" == *[\*\?\[\\]* ]]; then
+      echo "error: $exclude_label: $path isn't a plain path inside one of the service's data mounts" >&2
+      return 1
+    fi
+  done < <(label_paths "$1" "$exclude_label")
+}
+
+# The mounts of container $1 that lie inside its mount at $2 (any other mount at a path below it), one container
+# path per line. Each is backed up on its own, or skipped; a backup of $2 leaves them out, and a restore of $2
+# leaves them and the directories leading to them in place.
+nested_mounts() {
+  local dest
+  docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$1" |
+    while IFS= read -r dest; do
+      if [ -n "$dest" ] && [[ "$dest" == "$2"/* ]]; then printf '%s\n' "$dest"; fi
+    done
+}
+
+# The paths inside container $1's mount at $2 that the mount's archive leaves out and a restore of it spares, one per
+# line: the mounts below it (nested_mounts) and the paths its exclude_label lists there.
+left_out() {
+  local path
+  { nested_mounts "$1" "$2" && label_paths "$1" "$exclude_label"; } |
+    while IFS= read -r path; do
+      if [[ "$path" == "$2"/* ]]; then printf '%s\n' "$path"; fi
+    done | sort -u
 }
 
 # Whether $2 is a directory in container $1 (a bind-mounted file isn't archived).

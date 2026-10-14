@@ -7,9 +7,10 @@
 #
 # Without SERVICE, every service that has an archive in DIR is restored. The checksums are verified first, and it
 # asks for confirmation (unless --yes) after listing what it will overwrite. It only writes to a container path
-# the service still mounts read-write, never to the Docker socket or a path the service excludes from backups. On a new host, restore .env from DIR/env first;
-# the volumes and containers are created as needed. Uses `docker compose` from the checkout, so the standard
-# Compose variables select another project, as in scripts/backup.sh.
+# the service still mounts read-write, never to the Docker socket or a path the service excludes from backups, and
+# leaves the paths a service's exclude label lists inside a mount as they are. On a new host, restore .env from
+# DIR/env first; the volumes and containers are created as needed. Uses `docker compose` from the checkout, so the
+# standard Compose variables select another project, as in scripts/backup.sh.
 set -euo pipefail
 
 usage() {
@@ -74,9 +75,11 @@ for entry in "${entries[@]}"; do
   if skipped_mounts "$id" | grep -qxF -- "$mount"; then
     fail "$service excludes $mount from backups ($skip_label); refusing to write it"
   fi
+  check_excludes "$id" || exit 1
   source=$(data_mounts "$id" | awk -F '\t' -v m="$mount" '$1 == m { print $2 }')
   [ -n "$source" ] || fail "$service has no read-write mount at $mount any more (compose.yaml changed since the backup)"
-  echo "  $service $mount: $source"
+  keep=$(left_out "$id" "$mount" | tr '\n' ',' | sed -e 's/,$//' -e 's/,/, /g')
+  echo "  $service $mount: $source${keep:+ (except $keep)}"
 done
 if ! $yes; then
   read -r -p "Type 'yes' to continue: " answer
@@ -104,8 +107,21 @@ for entry in "${entries[@]}"; do
   IFS=$'\t' read -r archive service mount <<<"$entry"
   id=$(docker compose ps --all --quiet "$service")
   echo "Restoring $service $mount"
+  # A mount inside this one is restored or skipped on its own, and the paths the service's exclude label lists
+  # aren't in the archive: neither they nor the directories leading to them are deleted. (-delete implies -depth,
+  # so -prune can't be used; the patterns exclude them instead.)
+  spare=()
+  while IFS= read -r nested; do
+    spare+=(! -path "$nested" ! -path "$nested/*")
+    parent=${nested%/*}
+    while [ "$parent" != "$mount" ]; do
+      spare+=(! -path "$parent")
+      parent=${parent%/*}
+    done
+  done < <(left_out "$id" "$mount")
+  docker run --rm --network none --volumes-from "$id" "$busybox" \
+    find "$mount" -mindepth 1 "${spare[@]+"${spare[@]}"}" -delete </dev/null
   # tar runs as root in the container, so files get back their original owners and modes.
-  docker run --rm -i --network none --volumes-from "$id" "$busybox" \
-    sh -c 'find "$1" -mindepth 1 -delete && tar -xzf - -C "$1"' restore "$mount" <"$backup/$archive"
+  docker run --rm -i --network none --volumes-from "$id" "$busybox" tar -xzf - -C "$mount" <"$backup/$archive"
 done
 echo "Restored. Services that weren't running before stay stopped: start them with 'docker compose up -d'."

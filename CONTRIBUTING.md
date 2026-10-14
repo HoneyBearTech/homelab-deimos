@@ -26,8 +26,7 @@ make test     # creates .venv with the hash-pinned tools, runs the checker's tes
 make lint     # ruff, ruff format, yamllint, shellcheck
 cp .env.example .env && make check   # the policy check over the resolved Compose file
 make smoke    # starts the whole stack with throwaway settings, waits until every service is healthy,
-              # then backs it up, changes it and restores it (and, once the stack has autoheal, checks that it
-              # restarts an unhealthy container)
+              # then backs it up, changes it, restores it, and checks that autoheal restarts an unhealthy container
 ```
 
 How the stack fits together is in [docs/architecture.md](docs/architecture.md).
@@ -37,14 +36,21 @@ How the stack fits together is in [docs/architecture.md](docs/architecture.md).
 Every push and pull request runs two CI jobs ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), both
 required checks on `main`. "Checks + tests" runs the linters below, a gitleaks scan of the whole history,
 the checker's unit tests with a coverage floor, `docker compose config` and the policy check
-([`scripts/check_compose.py`](scripts/check_compose.py)). "Stack smoke test"
-([`scripts/smoke-test.sh`](scripts/smoke-test.sh)), on an amd64 runner like the server (without a GPU), starts
-every service with throwaway directories and volumes, fails unless each one reports healthy within five
-minutes, runs a backup and restore round trip over every data mount, checks that mounts excluded from backups
-(the media library) are neither archived nor overwritten, runs the scheduled backup against a stand-in backup
-server, and, once the stack has autoheal, checks that it
-restarts a container that turns unhealthy. CodeQL, dependency review, a DCO check and OpenSSF Scorecard also run
-on the repository.
+([`scripts/check_compose.py`](scripts/check_compose.py)) of `compose.yaml` alone and with `compose.gpu.yaml`.
+"Stack smoke test" ([`scripts/smoke-test.sh`](scripts/smoke-test.sh)), on an amd64 runner like the server
+(without a GPU, so `compose.yaml` alone), pulls every image (logged in to Docker Hub when the project's
+read-only token is set, and logged out again before any container starts), starts every service with throwaway
+directories and volumes, fails unless each one reports healthy within five minutes, runs a backup and restore
+round trip over every data mount (checking `NETWORKS` and `VERSION`, that mounts a service skips, such as the
+media library, are neither archived nor overwritten, and that paths a service excludes inside a mount are
+neither archived nor deleted), runs the scheduled backup against a stand-in backup server, and checks that
+autoheal restarts a container that turns unhealthy. CodeQL, dependency review, a DCO check and OpenSSF
+Scorecard also run on the repository.
+
+The maintainer also keeps a copy on a self-hosted GitLab, mirrored from GitHub by a scheduled job in
+[`.gitlab-ci.yml`](.gitlab-ci.yml), which re-runs the "Checks + tests" steps that need no Docker daemon on
+every commit it receives. Changes go to GitHub only; a commit made on the GitLab copy stops the mirror. Until
+the maintainer has created the GitLab project, its `MIRROR_TOKEN` and the schedule, the file does nothing.
 
 The checker's tests are offline: they feed it JSON fixtures in [`tests/fixtures/`](tests/fixtures/), with no
 Docker and no network. The smoke test needs both: it pulls the pinned images.
@@ -68,7 +74,8 @@ The workflow and secret scanners run in containers; the exact commands are in
 - **Compose** (`compose.yaml`): every image pinned as `name:tag@sha256:<digest>` (Dependabot updates both);
   settings from `.env` through `${VAR}`; no `privileged`, added capabilities, host network or PID namespace,
   Docker socket mount or device mapping (a GPU goes in `compose.gpu.yaml` as a reservation) unless the service
-  has an `org.honeybeartech.deimos.allow.<rule>` label giving the reason; every service has a health check. `scripts/check_compose.py` enforces this.
+  has an `org.honeybeartech.deimos.allow.<rule>` label giving the reason; every service has a health check.
+  `scripts/check_compose.py` enforces this.
 - **Python** (`scripts/`, `tests/`): [PEP 8](https://peps.python.org/pep-0008/) and
   [PEP 257](https://peps.python.org/pep-0257/), enforced by [ruff](https://docs.astral.sh/ruff/) with every rule
   family enabled, including type annotations, docstrings and the bandit security rules, and `ruff format`; the

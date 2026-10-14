@@ -1,4 +1,4 @@
-# Starts homelab-deimos-backup.service every night. Each service is stopped only while its own data is archived
+# Starts homelab-deimos-backup.service every night. Each service is stopped only while its own data is copied
 # (seconds for most; Tdarr longest, and a transcode it was running starts over), so pick an hour when Tdarr's queue
 # is quiet and nobody prints. Persistent: a run missed while the host was off happens at the next boot.
 [Unit]
