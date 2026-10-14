@@ -45,8 +45,10 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
 one. New versions arrive as Dependabot pull requests that CI checks: patch and minor updates merge on their own
-once the checks pass, while major updates and every Tdarr update wait for the maintainer. A merge changes only
-this repository; nothing on the host updates itself.
+once the checks pass, while major updates and every Tdarr update wait for the maintainer. The maintainer's server
+follows `main`: a pull agent there applies each merge within a couple of minutes
+([upgrading](docs/upgrading.md#following-main)). Nothing updates from a registry tag by itself: what runs is always
+a commit in `main`.
 
 ## Getting started
 
@@ -76,7 +78,8 @@ For unattended backups, `scripts/scheduled-backup.sh` (run nightly by the system
 [`deploy/systemd/`](deploy/systemd/)) copies each backup off the host with rsync and reports to an Uptime Kuma push
 monitor ([installing](docs/installing.md#scheduled-backups)).
 
-Upgrading to a new release: [docs/upgrading.md](docs/upgrading.md).
+Upgrading to a new release, or following `main` the way the maintainer's server does:
+[docs/upgrading.md](docs/upgrading.md).
 
 ## Configuration
 
@@ -118,7 +121,8 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - Secrets (logins, API keys, printer credentials) live in each service's data, and the webhook and push monitor
   URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
   private and off the host.
-- Don't run an auto-updater such as Watchtower on these containers; upgrade by release instead.
+- Don't run an auto-updater such as Watchtower on these containers; upgrade from this repository instead (a
+  release, or `main`).
 - Every service drops every Linux capability and can't gain new privileges; Tdarr and Spoolman add back only the
   few their init needs, from Docker's default set.
 - The policy check refuses unpinned images, privileged containers, services that keep their capabilities or can

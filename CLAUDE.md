@@ -2,8 +2,8 @@
 
 The Docker Compose stack for Deimos, the owner's homelab media-processing and 3D-printing server (Ubuntu 24.04,
 amd64, a VM with an NVIDIA GPU passed through): Tdarr, Spoolman and the AMS app, every image pinned by tag and
-digest so the server can be upgraded and rebuilt from this repository. Deimos runs the stack from a checkout of a
-release tag (cut over 2026-10-13); its nightly backups go off the host.
+digest so the server can be upgraded and rebuilt from this repository. Deimos runs the stack from a checkout of
+`main` that a pull agent deploys (see Deploys below); its nightly backups go off the host.
 
 ## Before Making Structural Changes
 Read the project's notes first. They live outside this repo, in the owner's Obsidian vault **Chronos** at
@@ -44,9 +44,9 @@ host's services goes to ares too (owner 2026-10-13).
 
 ## Rules for the stack
 - **Every image is pinned as `name:tag@sha256:<digest>`.** Never `latest`, never tag-only. Dependabot
-  (`docker-compose` ecosystem) updates tag and digest together. Patch and minor updates, and image rebuilds (same
-  tag, new digest; owner 2026-10-14), auto-merge once the required checks pass; major updates wait for the owner. A
-  merge never deploys: Deimos changes only on a deliberate pull.
+  (`docker-compose` ecosystem) updates tag and digest together. Patch and minor updates, and image rebuilds (same tag,
+  new digest; owner 2026-10-14), auto-merge once the required checks pass; major updates wait for the owner. Every
+  merge deploys, the automatic ones included (see Deploys).
 - **Amd64.** Every image must publish `linux/amd64`. The smoke test runs on `ubuntu-latest` and the image scan
   scans `linux/amd64`.
 - **The GPU is optional to CI.** GitHub's runners have no GPU, so the NVIDIA device reservation must not stop
@@ -79,14 +79,25 @@ host's services goes to ares too (owner 2026-10-13).
   hub on another host, port 7007, owner 2026-10-13). Don't add more without the owner agreeing.
 - **Every service has a health check and the `autoheal: "true"` label** (except autoheal itself). autoheal must
   never get the socket itself, only `tcp://socket-proxy:2375`.
-- **Never change the live server** (Deimos) without the owner asking: no `docker compose up`, no edits to
-  service data, Tdarr libraries or flows, or Portainer stacks. Read-only inspection (`docker ps`,
-  `docker inspect`) only when asked.
+- **Never change the live server** (Deimos) without the owner asking: no merge (a merge deploys), no
+  `docker compose up`, no edits to service data, Tdarr libraries or flows, or Portainer stacks. Read-only inspection
+  (`docker ps`, `docker inspect`) only when asked.
 - Every setting goes through `.env` (`${VAR:?…}` in compose when required) and is listed in `.env.example`
   and `docs/interfaces.md`.
 - **Container paths and ports are load-bearing**: Tdarr stores library paths in its database, and the reverse
   proxy and Home Assistant reach the services by their published ports, and the Dozzle hub reaches the agent on
   port 7007. Adopt the existing data and keep paths and ports the same; see the cutover plan in Chronos.
+
+## Deploys (owner's decision 2026-10-14)
+- **A merge to `main` deploys.** A pull agent on Deimos (systemd user timer `homelab-pull@deimos`, from the owner's
+  private homelab-ops repo; rolled out host by host, see Chronos) fetches `main` about every 90 s. When it moved,
+  the agent fast-forwards the checkout and runs `docker compose config --quiet`, `docker compose pull` and
+  `docker compose up -d --remove-orphans --wait`: a merge is live within about two minutes. It refuses local
+  changes and non-fast-forward history, and moves the checkout back if config or pull fails.
+- **Rollback is a revert PR**, deployed the same way. A revert doesn't undo a data migration: then the backup and
+  `scripts/restore.sh` are the way back, with the owner.
+- **Pinning by hand**: the owner checks out another commit or tag on the host; the agent pauses until the checkout
+  is on `main` again. Release tags stay as signed, verified snapshots; they no longer drive deploys.
 
 ## Stack
 - Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 6 services), upstream images: Tdarr (server with an
@@ -121,8 +132,13 @@ host's services goes to ares too (owner 2026-10-13).
   full SHA with a version comment; untrusted `${{ github.event.* }}` only through `env:`.
 - Required checks in the `main` ruleset: `CI / Checks + tests`, `CI / Stack smoke test`, DCO sign-off,
   Dependency review, CodeQL's Analyze (python) / Analyze (actions). Don't rename those jobs.
-- Claude opens a PR for every change and may turn on auto-merge for it (`gh pr merge --auto --squash`), as on
-  the sibling repos. Never bypass a check or the ruleset.
+- **Merging (owner's decision 2026-10-14):** Claude opens a PR for every change. A merge deploys (see Deploys),
+  so Claude never merges and never turns on auto-merge (`gh pr merge --auto`) for a PR without the owner's OK for
+  that PR, and says in the question that merging deploys to Deimos. Never bypass a check or the ruleset.
+  Dependabot's patch and minor updates and image rebuilds still auto-merge through
+  `dependabot-auto-merge.yml` once every required check passes, so they now deploy unattended; majors and every
+  Tdarr update wait for the owner. Keeping that auto-merge is the owner's call: don't change
+  `dependabot-auto-merge.yml` without it.
 
 ## Commands
 ```sh

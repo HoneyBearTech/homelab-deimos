@@ -46,7 +46,8 @@ set each path in `.env` to where its data already is, and keep the same publishe
 container path for the media library**: Tdarr stores every file's path in its database, so a different mount
 point makes it see a new library. Take a backup of the old data first.
 
-Running `main` instead of a release is possible but unsupported for anything you depend on.
+The maintainer's server runs `main` rather than a release, and deploys every merge by itself
+([upgrading.md](upgrading.md#following-main)). For your own setup, a release is the safer choice.
 
 ## Scheduled backups
 

@@ -8,6 +8,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- Docs: the maintainer's server now follows `main` with a pull agent instead of running a release tag, so a merge
+  deploys within about two minutes, Dependabot's automatic merges included. Rollback is a revert pull request; a
+  server is held on a version by checking out that commit, which pauses the agent. Release tags stay as signed,
+  verified snapshots ([docs/upgrading.md](docs/upgrading.md#following-main)).
 - Dependabot's image rebuilds (the same tag moving to a new digest: a rebuild of the same app version, with newer
   base packages) now merge automatically once every required check passes, as on homelab-atlas. The rule merges only
   a pull request whose one changed file is `compose.yaml`, whose changed lines are all `image:` lines, and whose
