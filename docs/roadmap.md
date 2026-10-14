@@ -43,7 +43,8 @@ file changes with them, in the same pull request.
   each service and live in its data, which the backups cover.
 - **Back up the media library.** It is too large; it belongs to the storage that holds it.
 - **Store secrets.** No logins, tokens or keys in the repository, encrypted or not.
-- **Auto-update.** Every version change is a reviewed commit.
+- **Auto-update from registries.** Every version change is a commit in `main` that passed CI; the server applies
+  only those.
 - **Run the other services on the same host** (the local LLM stack, monitoring agents). They have their own
   setup, even where they share the host.
 - **Be a general-purpose homelab distribution.** It describes one server; others are welcome to fork or borrow

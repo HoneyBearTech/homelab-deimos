@@ -32,10 +32,10 @@ reasoning, and may change course. Because the code is MIT-licensed, you can alwa
 | Contributor | Anyone who opens an issue or pull request | Follow [CONTRIBUTING.md](CONTRIBUTING.md) (coding standards, tests, sign-off, no secrets or network details) and the [Code of Conduct](CODE_OF_CONDUCT.md); report vulnerabilities privately. |
 | Security reporter | Anyone who reports a vulnerability | Report privately and allow time for a fix before disclosing, as described in [SECURITY.md](SECURITY.md). |
 
-Automated tools also take part: Dependabot proposes updates to the stack's images, the Python check tools
-and the GitHub Actions (patch and minor updates merge automatically once every required check passes; the
-maintainer merges major updates by hand), and CI with the Compose policy check, CodeQL, dependency review and
-OpenSSF Scorecard check every change.
+Automated tools also take part: Dependabot proposes updates to the stack's images, the Python check tools and the
+GitHub Actions (patch and minor updates merge automatically once every required check passes; the maintainer merges
+major updates by hand; a merge deploys to the maintainer's server), and CI with the Compose policy check, CodeQL,
+dependency review and OpenSSF Scorecard check every change.
 
 ## Access to sensitive resources
 

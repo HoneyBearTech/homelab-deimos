@@ -49,6 +49,9 @@ git checkout vX.Y.Z      # the backup's VERSION, or a newer release; verify it (
 cp /path/to/backup/env/.env .env && chmod 600 .env
 ```
 
+A server that follows `main` ([upgrading.md](upgrading.md#following-main)) stays on `main` here instead
+(skip the `git checkout`), and gets its pull agent back once the stack is healthy.
+
 Copy any `<service>.env` from the backup's `env/` the same way (mode `600`). Edit `.env` if the new host's
 paths differ (but keep the media library's container path), create the data directories as your user, then:
 
