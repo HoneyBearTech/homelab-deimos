@@ -6,6 +6,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Added
 
 - Label `org.honeybeartech.deimos.backup.exclude`: paths inside a data mount (comma-separated, at any depth) that a
@@ -33,7 +35,6 @@ All notable changes to homelab-deimos are documented here. The format follows
   after upgrading (`docs/upgrading.md`); the timer stays at 04:00.
 - The backup scripts, smoke test and workflows are kept the same as homelab-ares' (the template for the homelab
   stacks).
-
 - docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as not reachable (rechecked on
   2.96.01: the container never runs them); Tdarr has 465 open alerts.
 - README: Dependabot's patch and minor updates merge on their own (Tdarr's and major updates wait for the
@@ -45,7 +46,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 - Every service drops every Linux capability and runs with `no-new-privileges` (also with `compose.gpu.yaml`).
   Tdarr adds back `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID` and `KILL` for its init, which runs as root and
   starts the server and node as its own user; Spoolman adds back `SETUID` and `SETGID` to switch to its
-  user. The AMS app now runs as `PUID`:`PGID` instead of root, and adds back none, like the others. The table is in docs/security.md#hardening.
+  user. The AMS app now runs as `PUID`:`PGID` instead of root and adds back none, like the others. The table is
+  in docs/security.md#hardening.
 - Spoolman, the AMS app, the Dozzle agent and autoheal get a read-only root filesystem (`/tmp` in memory where
   they write it), like socket-proxy already had. Tdarr's stays writable. Spoolman's `PUID`/`PGID` must now stay
   1000, its image's user.
@@ -152,7 +154,8 @@ leave the media library alone, and release signing around it.
 - A release workflow that publishes a source archive, the SBOM, `SHA256SUMS` signed keylessly with cosign,
   and SLSA build provenance ([docs/verifying-releases.md](docs/verifying-releases.md)).
 
-[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/HoneyBearTech/homelab-deimos/releases/tag/v0.1.0
