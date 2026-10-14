@@ -9,8 +9,8 @@
 # asks for confirmation (unless --yes) after listing what it will overwrite. It only writes to a container path
 # the service still mounts read-write, never to the Docker socket or a path the service excludes from backups, and
 # leaves the paths a service's exclude label lists inside a mount as they are. On a new host, restore .env from
-# DIR/env first; the volumes and containers are created as needed. Uses `docker compose` from the checkout, so the standard
-# Compose variables select another project, as in scripts/backup.sh.
+# DIR/env first; the volumes and containers are created as needed. Uses `docker compose` from the checkout, so the
+# standard Compose variables select another project, as in scripts/backup.sh.
 set -euo pipefail
 
 usage() {
