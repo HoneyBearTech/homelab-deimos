@@ -8,6 +8,15 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- `scripts/backup.sh` and `scripts/restore.sh` no longer overlap a deploy on a server that follows `main` with the
+  pull agent. Before anything stops, they wait for a deploy in progress to finish ("Waiting for a deploy by the pull
+  agent to finish"; after 30 minutes they fail without having stopped anything),
+  then hold the agent's lock until they exit, so the agent skips its runs meanwhile and deploys at its next run
+  afterwards. Where the agent keeps no state for the stack, nothing changes
+  ([docs/upgrading.md](docs/upgrading.md#backing-up)).
+- Docs: the roadmap lists what's done (updates, hardening, pull deploys, the badges) and what's next (Tdarr 3, a
+  rehearsed rebuild); the quick start no longer says releases don't exist yet; the docs that described automatic
+  merges as patch and minor only now include majors and image rebuilds.
 - Docs: the maintainer's server now follows `main` with a pull agent instead of running a release tag, so a merge
   deploys within about two minutes, Dependabot's automatic merges included. Rollback is a revert pull request; a
   server is held on a version by checking out that commit, which pauses the agent. Release tags stay as signed,

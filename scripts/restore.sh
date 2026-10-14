@@ -10,7 +10,8 @@
 # the service still mounts read-write, never to the Docker socket or a path the service excludes from backups, and
 # leaves the paths a service's exclude label lists inside a mount as they are. On a new host, restore .env from
 # DIR/env first; the volumes and containers are created as needed. Uses `docker compose` from the checkout, so the
-# standard Compose variables select another project, as in scripts/backup.sh.
+# standard Compose variables select another project, as in scripts/backup.sh. Like backup.sh, it waits for a deploy
+# by the pull agent to finish and keeps the agent from deploying until it's done (deploy_lock in scripts/lib.sh).
 set -euo pipefail
 
 usage() {
@@ -36,6 +37,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # shellcheck source=scripts/lib.sh
 . "$root/scripts/lib.sh"
 cd "$root"
+# Before anything stops: no deploy by the pull agent runs while services are stopped or their data is replaced.
+deploy_lock
 
 [ -f "$backup/MANIFEST" ] && [ -f "$backup/SHA256SUMS" ] || fail "$backup has no MANIFEST or SHA256SUMS"
 echo "Verifying $backup/SHA256SUMS"

@@ -29,6 +29,13 @@ scripts/backup.sh /path/to/backup-dir   # or a directory of your choice (new or 
 It **never** archives the media library, the transcode cache or Tdarr's logs: the library is far too large and
 is protected by snapshots on the storage that holds it; the cache and logs are disposable.
 
+On a server where the pull agent deploys `main` ([Following `main`](#following-main)), `scripts/backup.sh` and
+`scripts/restore.sh` first wait for a deploy in progress to finish (printing "Waiting for a deploy by the pull agent
+to finish"; after 30 minutes they give up with an error, before anything has stopped), then hold the agent's lock
+until they exit. The agent skips its runs while they hold it, so it never starts or recreates a service that a backup
+has stopped or a restore is rewriting, and deploys what it skipped at its next run after they finish. Where the agent
+isn't installed (it keeps no state for the stack), nothing changes.
+
 The directory holds one `<service>--<path>.tar.gz` per mount, the settings under `env/`, a `MANIFEST` naming
 each archive's service, container path, host path and image, `NETWORKS`, `VERSION` (the checkout it was taken
 with) and `SHA256SUMS`. Everything in it is readable only by the user who ran the backup. **Copy it off the
@@ -64,8 +71,11 @@ itself ([dependencies.md](dependencies.md#tracking-dependencies)).
   If the configuration doesn't resolve or an image can't be pulled, it moves the checkout back, so the server keeps
   running what it ran.
 - **The merge is the upgrade.** Before merging an update that can migrate a service's data, read the release notes
-  and take a backup on the server (`scripts/backup.sh`). The updates that merge by themselves (patch and minor ones,
-  and image rebuilds) rely on the nightly [scheduled backup](installing.md#scheduled-backups).
+  and take a backup on the server (`scripts/backup.sh`). The updates that merge by themselves (patch, minor and
+  major ones, and image rebuilds; never Tdarr's) rely on the nightly
+  [scheduled backup](installing.md#scheduled-backups).
+- **Backups and restores never overlap a deploy**: they take the agent's lock first ([Backing up](#backing-up)), so a
+  merge that lands during the nightly backup deploys a few minutes after it, not halfway through.
 - **Rolling back** is a revert pull request, deployed the same way. If the service already migrated its data,
   restore that too ([Rolling back](#rolling-back)).
 - **Holding the server on a version**: check out that commit or release on the server (`git checkout vX.Y.Z`).

@@ -99,6 +99,11 @@ host's services goes to ares too (owner 2026-10-13).
   `scripts/restore.sh` are the way back, with the owner.
 - **Pinning by hand**: the owner checks out another commit or tag on the host; the agent pauses until the checkout
   is on `main` again. Release tags stay as signed, verified snapshots; they no longer drive deploys.
+- **Backups and restores lock out deploys**: `backup.sh` and `restore.sh` call `deploy_lock` (scripts/lib.sh) before
+  anything stops. It takes the agent's own `flock` lock (`$HOMELAB_PULL_STATE_DIR` or
+  `${XDG_STATE_HOME:-~/.local/state}/homelab-pull`, then `<pull_stack>/lock`), waiting up to 30 min for a deploy in
+  progress; the agent skips its run while the lock is held. No agent state directory (CI, the Mac) = no-op. The
+  function text is the same in every homelab stack (only `pull_stack` differs): keep it in step with homelab-ares.
 
 ## Stack
 - Docker Compose v2 (`compose.yaml` + `compose.gpu.yaml`, 6 services), upstream images: Tdarr (server with an
@@ -113,7 +118,7 @@ host's services goes to ares too (owner 2026-10-13).
   in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU rsync and macOS'
   openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
-  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor, rebuilds). CI logs in to Docker Hub with
+  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor/major, rebuilds; never Tdarr). CI logs in to Docker Hub with
   the read-only `DOCKERHUB_*` secrets when they exist (anonymous otherwise) and logs out before the smoke test
   starts a container (GOVERNANCE.md).
 - GitLab copy: the owner's self-hosted GitLab (CE, LAN only; host facts in Chronos) is to hold a mirror, as for

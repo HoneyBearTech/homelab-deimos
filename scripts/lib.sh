@@ -93,3 +93,32 @@ archive_name() {
   local path=${2#/}
   printf '%s--%s.tar.gz' "$1" "${path//\//_}"
 }
+
+# The stack's name in homelab-ops' pull agent (homelab-pull), which names its state directory, and how long (seconds)
+# deploy_lock waits for a deploy in progress. deploy_lock is the same text in every homelab stack; only pull_stack
+# differs.
+pull_stack=deimos
+deploy_lock_timeout=1800
+
+# Waits until the pull agent isn't deploying this stack, then keeps it from starting a deploy until the calling
+# script exits: the agent takes the same lock with `flock --nonblock` and skips its run while it's held, so it never
+# starts or recreates a service that a backup has stopped or a restore is rewriting, and deploys at its next run
+# afterwards. Does nothing where the agent keeps no state for the stack (CI, a workstation, a host without the agent).
+# The lock is held on file descriptor 9 until the script exits.
+deploy_lock() {
+  local dir=${HOMELAB_PULL_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/homelab-pull}/$pull_stack
+  if [ ! -d "$dir" ]; then return 0; fi
+  if ! command -v flock >/dev/null; then
+    echo "error: $dir exists (the pull agent deploys here) but flock isn't installed to lock it" >&2
+    return 1
+  fi
+  exec 9>>"$dir/lock"
+  if ! flock --nonblock 9; then
+    echo "Waiting for a deploy by the pull agent to finish (up to $deploy_lock_timeout s)"
+    if ! flock --timeout "$deploy_lock_timeout" 9; then
+      echo "error: the pull agent's deploy of $pull_stack still holds $dir/lock after $deploy_lock_timeout s;" \
+        "nothing was stopped (check: journalctl --user -u homelab-pull@$pull_stack)" >&2
+      return 1
+    fi
+  fi
+}
