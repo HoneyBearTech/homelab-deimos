@@ -14,7 +14,7 @@ setting marked required stops `docker compose` with an error naming it when it's
 | --- | --- | --- | --- |
 | `COMPOSE_FILE` | no | `compose.yaml:compose.gpu.yaml` | Set on a host with an NVIDIA GPU, so Tdarr gets it ([GPU](#gpu)). Leave unset without one. |
 | `TZ` | yes | `Etc/UTC` | Time zone (tz database name) for logs and schedules. |
-| `PUID`, `PGID` | yes | `1000` | User and group Tdarr and Spoolman run as; Tdarr's must be able to read and write the media library. |
+| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library. |
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
 | `TDARR_SERVER_PATH` | yes | `/srv/appdata/tdarr/server` | Tdarr's database. |
 | `TDARR_CONFIGS_PATH` | yes | `/srv/appdata/tdarr/configs` | Tdarr's settings. |
