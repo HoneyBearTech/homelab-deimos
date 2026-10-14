@@ -44,9 +44,9 @@ host's services goes to ares too (owner 2026-10-13).
 
 ## Rules for the stack
 - **Every image is pinned as `name:tag@sha256:<digest>`.** Never `latest`, never tag-only. Dependabot
-  (`docker-compose` ecosystem) updates tag and digest together. Patch and minor updates auto-merge once the
-  required checks pass; major updates wait for the owner. A merge never deploys: Deimos changes only on a
-  deliberate pull.
+  (`docker-compose` ecosystem) updates tag and digest together. Patch and minor updates, and image rebuilds (same
+  tag, new digest; owner 2026-10-14), auto-merge once the required checks pass; major updates wait for the owner. A
+  merge never deploys: Deimos changes only on a deliberate pull.
 - **Amd64.** Every image must publish `linux/amd64`. The smoke test runs on `ubuntu-latest` and the image scan
   scans `linux/amd64`.
 - **The GPU is optional to CI.** GitHub's runners have no GPU, so the NVIDIA device reservation must not stop
@@ -101,7 +101,7 @@ host's services goes to ares too (owner 2026-10-13).
   in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU rsync and macOS'
   openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
-  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor). CI logs in to Docker Hub with
+  dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor, rebuilds). CI logs in to Docker Hub with
   the read-only `DOCKERHUB_*` secrets when they exist (anonymous otherwise) and logs out before the smoke test
   starts a container (GOVERNANCE.md).
 - GitLab copy: the owner's self-hosted GitLab (CE, LAN only; host facts in Chronos) is to hold a mirror, as for

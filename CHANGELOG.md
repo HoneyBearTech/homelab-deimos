@@ -6,6 +6,13 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Dependabot's image rebuilds (the same tag moving to a new digest: a rebuild of the same app version, with newer
+  base packages) now merge automatically once every required check passes, as on homelab-atlas. The rule merges only
+  a pull request whose one changed file is `compose.yaml`, whose changed lines are all `image:` lines, and whose
+  image tags stay the same. Tdarr's rebuilds wait, like all its updates.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

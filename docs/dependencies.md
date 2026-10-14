@@ -45,6 +45,9 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 - **Patch and minor updates merge automatically** once every required check has passed (CI with the Compose
   policy check and the smoke test, CodeQL, dependency review), **except Tdarr's**: any Tdarr update is merged by
   hand, after reading its release notes, because a faulty Tdarr version can damage the media library.
+- **Image rebuilds merge automatically too**: a pull request that only moves an image to a new digest under the
+  same tag (a rebuild of the same app version, with newer base packages) and changes nothing else in `compose.yaml`.
+  Tdarr's rebuilds wait, like all its updates.
 - **Major updates are merged by hand**, after reading the service's release notes: a new major version can
   migrate its data one way.
 - **A merge doesn't deploy.** The server runs what it last pulled; updates reach it when the operator pulls
