@@ -42,7 +42,7 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
   Dependabot alerts and security updates are on.
 - The CI-only images in `run:` steps and the scripts' busybox image aren't seen by Dependabot; they're bumped
   by hand at least every quarter.
-- **Patch and minor updates merge automatically** once every required check has passed (CI with the Compose
+- **Patch and minor updates merge automatically** (and majors, below) once every required check has passed (CI with the Compose
   policy check and the smoke test, CodeQL, dependency review), **except Tdarr's**: any Tdarr update is merged by
   hand, after reading its release notes, because a faulty Tdarr version can damage the media library.
 - **Image rebuilds merge automatically too**: a pull request that only moves an image to a new digest under the

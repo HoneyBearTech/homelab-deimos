@@ -10,7 +10,8 @@ Toolkit ([installing.md](installing.md#requirements)).
    git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
    ```
 
-   Once releases exist, check out the latest one (`git checkout vX.Y.Z`) and verify it first
+   Check out the latest release (`git checkout vX.Y.Z`, see the
+   [releases](https://github.com/HoneyBearTech/homelab-deimos/releases)) and verify it first
    ([verifying-releases.md](verifying-releases.md)).
 
 2. **Configure it.**

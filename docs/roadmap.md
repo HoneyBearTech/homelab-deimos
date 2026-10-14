@@ -3,28 +3,37 @@
 Where homelab-deimos is going over roughly the next twelve months (from October 2026). Plans change; this
 file changes with them, in the same pull request.
 
-## Now: the stack in git
+## Done (October 2026)
 
-- Done: the checks, backup and restore scripts, smoke test, release signing and project policies; `compose.yaml`
-  with Tdarr, Spoolman and the AMS app, every image pinned by tag and digest for `linux/amd64`, a health check
-  for each service, the GPU for Tdarr in an optional override file; the smoke test running the real stack in CI.
-- Done: the first image scan triaged; the first release (0.1.0), from which Deimos was first deployed; Deimos
-  switched to run the stack from a checkout of this repository (October 2026), adopting the existing data, ports
-  and library paths.
-- Bring the images up to their current releases, one service at a time: Spoolman and the AMS app (under its new
-  image name, HaspelSync) in 0.2.0; Tdarr last, by hand.
+- The stack in git: the checks, backup and restore scripts, smoke test, release signing and project policies;
+  `compose.yaml` with Tdarr, Spoolman and the AMS app, every image pinned by tag and digest for `linux/amd64`, a health
+  check for each service, the GPU for Tdarr in an optional override file; the smoke test running the real stack in CI.
+- Deimos runs the stack from a checkout of this repository, adopting the existing data, ports and library paths.
+  It first ran release 0.1.0; since 0.3.0 it follows `main` with a pull agent, so a merge deploys
+  ([upgrading.md](upgrading.md#following-main)).
+- The images brought up to their current releases, one service at a time: Spoolman and the AMS app (under its new
+  image name, HaspelSync) in 0.2.0, Tdarr by hand in 0.2.1. Dependabot keeps them current since.
+- Scheduled backups copied off the host (`scripts/scheduled-backup.sh`, a systemd timer), reported to Uptime Kuma.
+- Tighter container settings (0.3.0): every service drops all capabilities and adds back only what its image needs,
+  can't gain privileges, and runs with a read-only root filesystem where the image allows it (all but Tdarr); the AMS
+  app runs as an unprivileged user.
+- Backups and restores wait for a deploy by the pull agent and keep it from deploying while they run, so a merge
+  never recreates a service a backup has stopped ([upgrading.md](upgrading.md#backing-up)).
+- The OpenSSF Best Practices **Passing** and **Silver** badges, and **OSPS Baseline** Levels 1 and 2.
+
+## Now
+
+- Tdarr 3, by hand after reading its release notes (its engine changes); decide then whether to turn on Tdarr's
+  own login.
 
 ## Next: safe upgrades and rebuilds
 
 - Rehearse the documented rebuild ([rebuilding.md](rebuilding.md)) on a scratch machine, including the GPU
   driver and the NVIDIA Container Toolkit.
-- Done: scheduled backups copied off the host (`scripts/scheduled-backup.sh`, a systemd timer), reported to Uptime
-  Kuma.
 
 ## Later
 
-- Tighter container settings where the images allow it (read-only root filesystems, dropped capabilities,
-  non-root users).
+- A read-only root filesystem for Tdarr too, if its image ever allows one.
 - Optional services as Compose profiles, so a smaller installation can leave them out.
 
 ## Security and project health
@@ -32,9 +41,8 @@ file changes with them, in the same pull request.
 - Keep CI, CodeQL, Scorecard, dependency review and the DCO check green on every change.
 - Branch protection on `main` with required checks; private vulnerability reporting; secret scanning with
   push protection.
-- Reach the OpenSSF Best Practices **Passing** and **Silver** badges, and meet **OSPS Baseline** Levels 1
-  and 2.
-- Signed releases with checksums, SBOM and SLSA provenance from the first release on.
+- Keep the OpenSSF Best Practices Passing and Silver badges and OSPS Baseline Levels 1 and 2 as the project changes.
+- Signed releases with checksums, SBOM and SLSA provenance, as named, verifiable snapshots of `main`.
 
 ## What homelab-deimos will not do
 
