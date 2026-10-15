@@ -55,8 +55,8 @@ a commit in `main`.
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
 cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and SPOOLMAN_PUBLIC_URL
-. ./.env && mkdir -p "$TDARR_SERVER_PATH" "$TDARR_CONFIGS_PATH" "$TDARR_LOGS_PATH" "$TDARR_CACHE_PATH" \
-  "$SPOOLMAN_DATA_PATH" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"
+. ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
+  "$CONFIG_ROOT"/haspelsync/{config,logs}
 docker compose up -d --wait
 ```
 
@@ -91,14 +91,8 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
 | `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library |
 | `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
-| `TDARR_SERVER_PATH` | `/srv/appdata/tdarr/server` | Tdarr's database |
-| `TDARR_CONFIGS_PATH` | `/srv/appdata/tdarr/configs` | Tdarr's settings |
-| `TDARR_LOGS_PATH` | `/srv/appdata/tdarr/logs` | Tdarr's logs |
-| `TDARR_CACHE_PATH` | `/srv/transcode-cache` | Scratch space for transcodes in progress |
-| `SPOOLMAN_DATA_PATH` | `/srv/appdata/spoolman` | Spoolman's database |
+| `CONFIG_ROOT` | `/srv/config` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |
 | `SPOOLMAN_PUBLIC_URL` | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at (the AMS app's links) |
-| `AMS_PRINTERS_PATH` | `/srv/appdata/ams/printers` | The AMS app's printer list, with the printers' access codes |
-| `AMS_LOGS_PATH` | `/srv/appdata/ams/logs` | The AMS app's logs |
 
 autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
 [`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored). The scheduled backup's settings, including

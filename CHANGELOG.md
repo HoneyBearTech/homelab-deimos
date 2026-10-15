@@ -6,8 +6,49 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Add `CONFIG_ROOT` to `.env` and move each app's data into its folder under it before deploying this** (see
+  `.env.example`; never a folder inside `/var/lib/docker/volumes`). A deploy without `CONFIG_ROOT` stops at
+  `docker compose config` and changes nothing. Stop the stack (`docker compose stop`) and leave it stopped until
+  this is deployed (what an app writes to the old folder after the move is lost), then move:
+
+  | App | Old location (setting in `.env`) | New folder |
+  | --- | --- | --- |
+  | Tdarr | `TDARR_SERVER_PATH` | `CONFIG_ROOT/tdarr/server` |
+  | Tdarr | `TDARR_CONFIGS_PATH` | `CONFIG_ROOT/tdarr/config` |
+  | Tdarr | `TDARR_LOGS_PATH` | `CONFIG_ROOT/tdarr/logs` |
+  | Tdarr | `TDARR_CACHE_PATH` (the transcode cache) | `CONFIG_ROOT/tdarr/transcode` |
+  | Spoolman | `SPOOLMAN_DATA_PATH` | `CONFIG_ROOT/spoolman/config` |
+  | AMS app | `AMS_PRINTERS_PATH` | `CONFIG_ROOT/haspelsync/config` |
+  | AMS app | `AMS_LOGS_PATH` | `CONFIG_ROOT/haspelsync/logs` |
+
+  Keep the files' owners (`cp -a` or `mv`; Spoolman's and the AMS app's must be `PUID:PGID`, as they run as that
+  user). The logs and the transcode cache can start empty instead (create the folders, owned by `PUID:PGID`); empty
+  the cache only while Tdarr has no transcode in progress. For Tdarr's settings, for example:
+
+  ```sh
+  . ./.env && mkdir -p "$CONFIG_ROOT/tdarr" && sudo cp -a "$TDARR_CONFIGS_PATH" "$CONFIG_ROOT/tdarr/config"
+  ```
+
+  Then drop the seven old settings from `.env` (they're no longer read), and remove the old folders once the stack
+  runs from `CONFIG_ROOT`. Backups taken before this restore as they are: `scripts/restore.sh` puts each archive
+  into the folder the service mounts at that container path now.
+
 ### Changed
 
+- Each app's data moves to one folder per app under the new required setting `CONFIG_ROOT`: its settings and
+  database in `CONFIG_ROOT/<app>/config`, any other folder it needs beside that (`CONFIG_ROOT/tdarr/server`,
+  `tdarr/logs`, `tdarr/transcode`, `haspelsync/logs`), the same layout as every homelab stack (the maintainer's
+  decision, 2026-10-15). `CONFIG_ROOT` replaces `TDARR_SERVER_PATH`, `TDARR_CONFIGS_PATH`, `TDARR_LOGS_PATH`,
+  `TDARR_CACHE_PATH`, `SPOOLMAN_DATA_PATH`, `AMS_PRINTERS_PATH` and `AMS_LOGS_PATH`; the container paths and
+  `MEDIA_PATH` stay the same. `scripts/restore.sh` writes each archive to what the service mounts at that container
+  path now, recreating a container made from an older `compose.yaml` first and creating a missing folder, so a backup
+  of the old folders restores into the new ones ([docs/installing.md](docs/installing.md#where-data-lives)).
+- Docs: a warning never to point a path setting into `/var/lib/docker/volumes` or keep app data in named Docker
+  volumes: `docker volume prune`, `docker system prune --volumes` and Portainer's "remove unused volumes" delete any
+  volume no container mounts as a volume, including one whose `_data` folder a service bind-mounts
+  ([docs/installing.md](docs/installing.md#where-data-lives)).
 - `scripts/backup.sh` and `scripts/restore.sh` no longer overlap a deploy on a server that follows `main` with the
   pull agent. Before anything stops, they wait for a deploy in progress to finish ("Waiting for a deploy by the pull
   agent to finish"; after 30 minutes they fail without having stopped anything),

@@ -53,7 +53,8 @@ A server that follows `main` ([upgrading.md](upgrading.md#following-main)) stays
 (skip the `git checkout`), and gets its pull agent back once the stack is healthy.
 
 Copy any `<service>.env` from the backup's `env/` the same way (mode `600`). Edit `.env` if the new host's
-paths differ (but keep the media library's container path), create the data directories as your user, then:
+paths differ (but keep the media library's container path; never point `CONFIG_ROOT` into `/var/lib/docker/volumes`),
+create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](installing.md#installing), step 3), then:
 
 ```sh
 docker compose config --quiet && docker compose pull

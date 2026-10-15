@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 # Smoke test of the stack: start every service in compose.yaml with throwaway settings, wait until each one reports
 # healthy, then mark every data mount, take a backup, change the data, restore the backup and check that the data
-# and health came back (and that mounts and paths excluded from backups were neither archived nor overwritten), run
-# the scheduled backup against a stand-in backup server, make a test container unhealthy and check that autoheal
-# restarts it (when the stack has autoheal), and remove everything it created. CI runs it on every change; `make
-# smoke` runs it locally.
+# and health came back (and that mounts and paths excluded from backups were neither archived nor overwritten, and
+# that an app's config folder that is missing, behind a container made from older settings, is recreated where
+# compose.yaml says), run the scheduled backup against a stand-in backup server, make a test container unhealthy and
+# check that autoheal restarts it (when the stack has autoheal), and remove everything it created. CI runs it on
+# every change; `make smoke` runs it locally.
 # Without a compose.yaml there is nothing to test, and it says so and passes.
 #
 # It stays away from any real installation on the same Docker host: its own Compose project, settings from
-# .env.example with every directory (*_ROOT, *_PATH) moved into a temporary directory, every volume and network
-# name (*_VOLUME, *_NETWORK) and name prefix (*_PREFIX) replaced by one of its own, no fixed container names, no
-# published ports and no service env files. It never reads .env, ignores the stack's settings in the environment,
-# and on exit removes only the volumes Compose labelled with its own project and the networks it created.
+# .env.example with every directory (*_ROOT, *_PATH; so CONFIG_ROOT, with the apps' folders, too) moved into a
+# temporary directory, every volume and network name (*_VOLUME, *_NETWORK) and name prefix (*_PREFIX) replaced by one
+# of its own, no fixed container names, no published ports and no service env files. It never reads .env, ignores the
+# stack's settings in the environment, and on exit removes only the volumes Compose labelled with its own project and
+# the networks it created.
 set -euo pipefail
 
 project=homelab-deimos-smoke
@@ -75,6 +77,14 @@ while IFS= read -r line; do
   esac
   printf '%s=%s\n' "$key" "$value"
 done <<<"$settings" >"$work/env"
+
+# The folders the stack bind-mounts inside those directories (each app's CONFIG_ROOT/<app>/<purpose>) are made here
+# too, as the installing docs have the user make them, so they're owned like the directories rather than by root.
+while IFS= read -r dir; do
+  mkdir -p "$dir"
+  data_dirs+=("$dir")
+done < <(COMPOSE_FILE=$root/compose.yaml docker compose config |
+  awk -v w="$work/" '$1 == "source:" && index($2, w) == 1 { print $2 }' | sort -u)
 
 # The directories are owned as on a host: by PUID:PGID with mode 0755 when the stack sets PUID (the LinuxServer.io
 # images' convention), so a service that needs more than that, such as DAC_OVERRIDE to write into a directory it
@@ -151,6 +161,10 @@ put_marker() {
     sh -c 'echo "$2" >"$1/.smoke-marker" && if [ "$2" = changed ]; then touch "$1/.smoke-stray"; fi' \
     marker "$2" "$3" </dev/null
 }
+# The owner and mode of a path in container $1, read in a throwaway container (the container may be stopped).
+owner_mode() {
+  docker run --rm --network none --volumes-from "$1:ro" "$busybox" stat -c '%u:%g %a' "$2" </dev/null
+}
 check_marker() {
   docker run --rm --network none --volumes-from "$1:ro" "$busybox" \
     sh -c 'test "$(cat "$1/.smoke-marker")" = backed-up && test ! -e "$1/.smoke-stray"' check "$2" </dev/null
@@ -211,6 +225,33 @@ else
     IFS=$'\t' read -r service mount <<<"$target"
     put_marker "$(compose ps --quiet "$service")" "$mount" changed
   done
+  # A restore writes where compose.yaml mounts a service's data now, whatever its container or the backup's MANIFEST
+  # names, and creates a folder that is missing (a new host, or the move of the data under CONFIG_ROOT): one app's
+  # container is recreated with its data somewhere else, as from older settings, and its config folder
+  # (CONFIG_ROOT/<app>/config, a mount with nothing left out of it) is removed.
+  moved=""
+  config_root=$(sed -n 's/^CONFIG_ROOT=//p' "$work/env")
+  for target in "${targets[@]}"; do
+    IFS=$'\t' read -r service mount <<<"$target"
+    id=$(compose ps --quiet "$service")
+    source=$(data_mounts "$id" | awk -F '\t' -v m="$mount" '$1 == m { print $2 }')
+    app=${source#"$config_root"/}
+    if [ -z "$moved" ] && [ -n "$config_root" ] && [ "$source" = "$config_root/${app%/config}/config" ] &&
+      [[ "${app%/config}" != */* ]] && [ -z "$(left_out "$id" "$mount")" ]; then
+      moved=$service
+      moved_mount=$mount
+      moved_dir=$app
+    fi
+  done
+  if [ -n "$config_root" ] && [ -z "$moved" ]; then fail "no app keeps its data in CONFIG_ROOT/<app>/config"; fi
+  if [ -n "$moved" ]; then
+    moved_owner=$(owner_mode "$(compose ps --quiet "$moved")" "$moved_mount")
+    compose stop "$moved"
+    CONFIG_ROOT=$work/elsewhere docker compose create --force-recreate "$moved"
+    docker run --rm --network none -v "$config_root:/config-root" "$busybox" rm -rf "/config-root/$moved_dir" \
+      </dev/null
+    echo "$moved: container recreated with its data elsewhere, and its config folder removed"
+  fi
   "$root/scripts/restore.sh" --yes "$work/backup"
   for target in "${skipped[@]+"${skipped[@]}"}"; do
     IFS=$'\t' read -r service mount <<<"$target"
@@ -242,6 +283,12 @@ else
     check_marker "$(compose ps --all --quiet "$service")" "$mount" ||
       fail "$service $mount wasn't restored exactly (marker changed, or a file not in the backup was left)"
   done
+  if [ -n "$moved" ]; then
+    [ ! -e "$work/elsewhere" ] || fail "restore.sh wrote to the mount of $moved's out-of-date container"
+    [ "$(owner_mode "$(compose ps --all --quiet "$moved")" "$moved_mount")" = "$moved_owner" ] ||
+      fail "restore.sh didn't create $moved's config folder again with its owner and mode"
+    echo "$moved's data was restored into its config folder, created again, through a recreated container"
+  fi
   compose up --detach --wait --wait-timeout "$timeout"
   echo "Every data mount was restored, and every service is healthy again"
 fi

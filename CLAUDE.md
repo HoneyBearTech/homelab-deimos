@@ -29,7 +29,7 @@ host's services goes to ares too (owner 2026-10-13).
 ## This repo is public
 - No hostnames, IP addresses, internal or public domains, host paths, NFS exports, Portainer stack names or
   personal email addresses in anything committed: code, compose, docs, examples, tests, commit messages. Host
-  facts live only in the Chronos notes. Examples use placeholders (`/srv/appdata`, `/srv/media`,
+  facts live only in the Chronos notes. Examples use placeholders (`/srv/config`, `/srv/media`,
   `example.com`, `homelab-deimos_`).
 - Commit as `31805425+HoneyBearTech@users.noreply.github.com` (set as this repo's `user.email`), with
   `git commit -s` for the DCO sign-off; commits and tags are SSH-signed.
@@ -85,6 +85,16 @@ host's services goes to ares too (owner 2026-10-13).
   (`docker ps`, `docker inspect`) only when asked.
 - Every setting goes through `.env` (`${VAR:?…}` in compose when required) and is listed in `.env.example`
   and `docs/interfaces.md`.
+- **App data lives under `CONFIG_ROOT`** (owner's decision 2026-10-15, the same layout in every homelab stack): one
+  required setting, `${CONFIG_ROOT:?set CONFIG_ROOT in .env}/<app>/config` for each app's settings and database, and
+  any other per-app folder beside it as `${CONFIG_ROOT}/<app>/<purpose>` (`tdarr/server`, `tdarr/logs`,
+  `tdarr/transcode`, `haspelsync/logs`). `<app>` is the lowercase app name (the AMS app's is `haspelsync`, its
+  container name). No per-app path settings and **no named Docker volumes for app data**; `MEDIA_PATH` stays.
+  `tests/test_settings.py` enforces it.
+- **Never point a path setting into `/var/lib/docker/volumes`, and never keep app data in a named volume.**
+  `docker volume prune`, `docker system prune --volumes` and Portainer's "remove unused volumes" delete every volume
+  no container mounts *as a volume*, including one whose `_data` folder a service bind-mounts by its path (that is how
+  a prune on another homelab host deleted two apps' data, 2026-10-15). Keep data under `CONFIG_ROOT`.
 - **Container paths and ports are load-bearing**: Tdarr stores library paths in its database, and the reverse
   proxy and Home Assistant reach the services by their published ports, and the Dozzle hub reaches the agent on
   port 7007. Adopt the existing data and keep paths and ports the same; see the cutover plan in Chronos.

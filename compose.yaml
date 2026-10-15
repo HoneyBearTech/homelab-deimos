@@ -74,10 +74,12 @@ services:
       - "8265:8265" # web UI: keep it on the LAN
       - "8266:8266" # server port for Tdarr nodes on other machines
     volumes:
-      - ${TDARR_SERVER_PATH:?set TDARR_SERVER_PATH in .env}:/app/server
-      - ${TDARR_CONFIGS_PATH:?set TDARR_CONFIGS_PATH in .env}:/app/configs
-      - ${TDARR_LOGS_PATH:?set TDARR_LOGS_PATH in .env}:/app/logs
-      - ${TDARR_CACHE_PATH:?set TDARR_CACHE_PATH in .env}:/temp
+      # Its database (server), settings (config), logs and transcode cache: host directories under CONFIG_ROOT, never
+      # Docker volumes (docs/installing.md#where-data-lives).
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/tdarr/server:/app/server
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/tdarr/config:/app/configs
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/tdarr/logs:/app/logs
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/tdarr/transcode:/temp
       # Tdarr stores every file's path under /media in its database: keep the container path.
       - ${MEDIA_PATH:?set MEDIA_PATH in .env}:/media
     healthcheck:
@@ -108,7 +110,7 @@ services:
     ports:
       - "7912:8000" # web UI and REST API: keep it on the LAN
     volumes:
-      - ${SPOOLMAN_DATA_PATH:?set SPOOLMAN_DATA_PATH in .env}:/home/app/.local/share/spoolman
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/spoolman/config:/home/app/.local/share/spoolman
     healthcheck:
       <<: *healthcheck
       # The image has neither curl nor wget; its Python asks the health endpoint.
@@ -148,8 +150,9 @@ services:
     ports:
       - "4000:4000" # web UI: keep it on the LAN
     volumes:
-      - ${AMS_PRINTERS_PATH:?set AMS_PRINTERS_PATH in .env}:/app/printers
-      - ${AMS_LOGS_PATH:?set AMS_LOGS_PATH in .env}:/app/logs
+      # Under the app's own name (its container name), not the service's: CONFIG_ROOT/haspelsync/.
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/haspelsync/config:/app/printers
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/haspelsync/logs:/app/logs
     depends_on:
       spoolman:
         condition: service_healthy

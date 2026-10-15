@@ -15,36 +15,55 @@ The [quick start](quick-start.md) is the short version of this page.
 - A user in the `docker` group to run `docker compose`. Membership is equivalent to root on the host, so keep
   that group small.
 - The media library mounted on the host (local disk or a network share) and writable by `PUID`/`PGID`.
-- Disk for Tdarr's transcode cache: room for several of your largest files at once, ideally on fast local disk
-  rather than the network share.
+- Disk for `CONFIG_ROOT`, which holds Tdarr's transcode cache too: room for several of your largest files at once,
+  ideally on fast local disk rather than the network share.
 
 ## Where data lives
+
+Every app keeps its data in its own folder under `CONFIG_ROOT`, the one path setting for app data: its settings and
+database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside that, `CONFIG_ROOT/<app>/<purpose>`.
+`<app>` is the app's lowercase name.
 
 | What | Where on the host | In the container |
 | --- | --- | --- |
 | The media library | `MEDIA_PATH` | `/media` |
-| Tdarr's database | `TDARR_SERVER_PATH` | `/app/server` |
-| Tdarr's settings | `TDARR_CONFIGS_PATH` | `/app/configs` |
-| Tdarr's logs | `TDARR_LOGS_PATH` | `/app/logs` |
-| Tdarr's transcode cache | `TDARR_CACHE_PATH` | `/temp` |
-| Spoolman's database | `SPOOLMAN_DATA_PATH` | `/home/app/.local/share/spoolman` |
-| The AMS app's printer list (with the printers' access codes) | `AMS_PRINTERS_PATH` | `/app/printers` |
-| The AMS app's logs | `AMS_LOGS_PATH` | `/app/logs` |
+| Tdarr's settings | `CONFIG_ROOT/tdarr/config` | `/app/configs` |
+| Tdarr's database (libraries, flows, history) | `CONFIG_ROOT/tdarr/server` | `/app/server` |
+| Tdarr's logs (not backed up) | `CONFIG_ROOT/tdarr/logs` | `/app/logs` |
+| Tdarr's transcode cache (not backed up) | `CONFIG_ROOT/tdarr/transcode` | `/temp` |
+| Spoolman's database | `CONFIG_ROOT/spoolman/config` | `/home/app/.local/share/spoolman` |
+| The AMS app's printer list (with the printers' access codes) and settings | `CONFIG_ROOT/haspelsync/config` | `/app/printers` |
+| The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
 
-Every mount is listed in [interfaces.md](interfaces.md#volumes-and-mounts).
+The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
+largest files at once, so `CONFIG_ROOT` should be on a disk with that much space. Every mount is listed in
+[interfaces.md](interfaces.md#volumes-and-mounts).
+
+> **Warning: never point `CONFIG_ROOT` (or any other path setting) into `/var/lib/docker/volumes`, and don't keep
+> app data in named Docker volumes.** `docker volume prune`, `docker system prune --volumes` and Portainer's
+> "remove unused volumes" delete every volume that no container mounts *as a volume*, including one whose `_data`
+> folder a service bind-mounts by its path: Docker counts that volume as unused, and the app's data is gone. Keep
+> the data under `CONFIG_ROOT`, outside Docker's own directories.
 
 ## Installing
 
 1. Clone the repository (or download a release's source archive and verify it,
    [verifying-releases.md](verifying-releases.md)).
 2. Create `.env` from `.env.example` (mode `600`) and set every value.
-3. Create the data directories, then `docker compose up -d`.
+3. Create the folders as your user (so Docker doesn't create them owned by root), then `docker compose up -d`:
+
+   ```sh
+   . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
+     "$CONFIG_ROOT"/haspelsync/{config,logs}
+   ```
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
-Compose project), point the stack at their existing data instead of starting empty: stop the old containers,
-set each path in `.env` to where its data already is, and keep the same published ports and the **same
-container path for the media library**: Tdarr stores every file's path in its database, so a different mount
-point makes it see a new library. Take a backup of the old data first.
+Compose project), move their existing data into the folders above instead of starting empty: stop the old
+containers, copy each one's data into its folder with the owners kept (`cp -a`; they should be `PUID:PGID`), and
+keep the same published ports and the **same container path for the media library**: Tdarr stores every file's
+path in its database, so a different mount point makes it see a new library.
+`docker inspect --format '{{json .Mounts}}' tdarr` shows what a container mounts where. Take a backup of the old data
+first, and remove the old copies only once the stack runs from `CONFIG_ROOT`.
 
 The maintainer's server runs `main` rather than a release, and deploys every merge by itself
 ([upgrading.md](upgrading.md#following-main)). For your own setup, a release is the safer choice.
@@ -126,7 +145,7 @@ its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refus
 - **The Dozzle agent can read every container's logs and, through the Docker socket, control Docker**, for any
   Dozzle that connects to it. Keep its port (7007) on the LAN only.
 - Keep `.env` at mode `600`; it holds no secrets by design, but it describes your host.
-- Back up the services' data directories ([upgrading.md](upgrading.md#backing-up)), nightly and off the host
+- Back up the services' data in `CONFIG_ROOT` ([upgrading.md](upgrading.md#backing-up)), nightly and off the host
   ([scheduled backups](#scheduled-backups)).
 - Don't add services that mount the Docker socket, run privileged or use the host network without a documented
   reason; the policy check refuses them ([security.md](security.md)).
@@ -139,5 +158,5 @@ its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refus
 docker compose down          # stops and removes the containers and the stack's network
 ```
 
-The data directories, the transcode cache and the media library are left untouched. Remove the data directories
-by hand if you no longer want the services' data.
+`CONFIG_ROOT` (the services' data, the logs and the transcode cache) and the media library are left untouched.
+Remove the apps' folders under `CONFIG_ROOT` by hand if you no longer want the services' data.

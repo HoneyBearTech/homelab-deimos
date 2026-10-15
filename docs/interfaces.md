@@ -16,14 +16,8 @@ setting marked required stops `docker compose` with an error naming it when it's
 | `TZ` | yes | `Etc/UTC` | Time zone (tz database name) for logs and schedules. |
 | `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library. |
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
-| `TDARR_SERVER_PATH` | yes | `/srv/appdata/tdarr/server` | Tdarr's database. |
-| `TDARR_CONFIGS_PATH` | yes | `/srv/appdata/tdarr/configs` | Tdarr's settings. |
-| `TDARR_LOGS_PATH` | yes | `/srv/appdata/tdarr/logs` | Tdarr's logs (not backed up). |
-| `TDARR_CACHE_PATH` | yes | `/srv/transcode-cache` | Scratch space for transcodes in progress (not backed up). |
-| `SPOOLMAN_DATA_PATH` | yes | `/srv/appdata/spoolman` | Spoolman's database. |
+| `CONFIG_ROOT` | yes | `/srv/config` | Host folder holding every app's data, one folder per app: `CONFIG_ROOT/<app>/config` and any other folder beside it ([where data lives](installing.md#where-data-lives)). Never inside `/var/lib/docker/volumes`. |
 | `SPOOLMAN_PUBLIC_URL` | yes | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at; the AMS app's links point there. |
-| `AMS_PRINTERS_PATH` | yes | `/srv/appdata/ams/printers` | The AMS app's printer list, including the printers' access codes in plain text. |
-| `AMS_LOGS_PATH` | yes | `/srv/appdata/ams/logs` | The AMS app's logs (not backed up). |
 
 No secret is a setting. A secret a service can only take from its environment gets its own gitignored
 `<service>.env` (mode `600`) with a committed `<service>.env.example`:
@@ -85,13 +79,13 @@ Toolkit on the host. It's a separate file so the stack also starts on a machine 
 | Container path | Host source | Service |
 | --- | --- | --- |
 | `/media` | `MEDIA_PATH` | Tdarr: the media library (read-write; never backed up) |
-| `/app/server` | `TDARR_SERVER_PATH` | Tdarr: database (libraries, flows, history) |
-| `/app/configs` | `TDARR_CONFIGS_PATH` | Tdarr: settings |
-| `/app/logs` | `TDARR_LOGS_PATH` | Tdarr: logs (not backed up) |
-| `/temp` | `TDARR_CACHE_PATH` | Tdarr: transcode cache (not backed up) |
-| `/home/app/.local/share/spoolman` | `SPOOLMAN_DATA_PATH` | Spoolman: database |
-| `/app/printers` | `AMS_PRINTERS_PATH` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
-| `/app/logs` | `AMS_LOGS_PATH` | AMS app: logs (not backed up) |
+| `/app/configs` | `CONFIG_ROOT/tdarr/config` | Tdarr: settings |
+| `/app/server` | `CONFIG_ROOT/tdarr/server` | Tdarr: database (libraries, flows, history) |
+| `/app/logs` | `CONFIG_ROOT/tdarr/logs` | Tdarr: logs (not backed up) |
+| `/temp` | `CONFIG_ROOT/tdarr/transcode` | Tdarr: transcode cache (not backed up) |
+| `/home/app/.local/share/spoolman` | `CONFIG_ROOT/spoolman/config` | Spoolman: database |
+| `/app/printers` | `CONFIG_ROOT/haspelsync/config` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
+| `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
 
 ## Labels
