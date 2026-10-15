@@ -36,7 +36,7 @@ data or the media library's storage.
    Nothing connects in to the host to deploy. (Others can run a tagged, signed release instead.)
 3. **LAN → web UIs.** Not published beyond the LAN; reached through a reverse proxy with access lists.
 4. **Tdarr → media library.** Read-write by design; the boundary is the library's own snapshots.
-5. **Containers → host.** Only each service's data directories, the media library and the GPU; no host
+5. **Containers → host.** Only each service's folders under `CONFIG_ROOT`, the media library and the GPU; no host
    namespaces. The two socket mounts are reviewed, labelled exceptions: socket-proxy (read-only, filtered, on an
    internal network), through which alone autoheal reaches Docker, and the Dozzle agent (read-only, its port on
    the LAN only), which serves logs to the homelab's Dozzle.

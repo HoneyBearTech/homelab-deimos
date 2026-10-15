@@ -20,15 +20,17 @@ Toolkit ([installing.md](installing.md#requirements)).
    cp .env.example .env && chmod 600 .env
    ```
 
-   In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`, the
-   data paths and `SPOOLMAN_PUBLIC_URL`. With an NVIDIA GPU, uncomment
-   `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting is described in [interfaces.md](interfaces.md#settings).
+   In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`,
+   `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`) and
+   `SPOOLMAN_PUBLIC_URL`. With an NVIDIA GPU, uncomment `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting
+   is described in [interfaces.md](interfaces.md#settings).
 
-3. **Create the data directories** as your user, so Docker doesn't create them owned by root:
+3. **Create the apps' folders under `CONFIG_ROOT`** as your user, so Docker doesn't create them owned by root
+   ([where data lives](installing.md#where-data-lives)):
 
    ```sh
-   . ./.env && mkdir -p "$TDARR_SERVER_PATH" "$TDARR_CONFIGS_PATH" "$TDARR_LOGS_PATH" \
-     "$TDARR_CACHE_PATH" "$SPOOLMAN_DATA_PATH" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"
+   . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
+     "$CONFIG_ROOT"/haspelsync/{config,logs}
    ```
 
 4. **Check the GPU** is visible to containers (skip this without one):

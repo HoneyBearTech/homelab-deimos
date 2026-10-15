@@ -52,9 +52,10 @@ autoheal ──(internal network)──▶ socket-proxy ──read-only socket�
 Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only socket──▶ Docker: container logs
 ```
 
-Each service keeps its settings and database in its own data directory (see
-[interfaces.md](interfaces.md#volumes-and-mounts)), which is what `scripts/backup.sh` archives. The media library
-and the transcode cache are never archived.
+Each service keeps its settings and database in its own folder under `CONFIG_ROOT` (`CONFIG_ROOT/<app>/config`, with
+any other folder it needs beside it; see [interfaces.md](interfaces.md#volumes-and-mounts)), which is what
+`scripts/backup.sh` archives. No app data is in a named Docker volume, so a `docker volume prune` can't reach it. The
+media library, the logs and the transcode cache are never archived.
 
 ## How changes reach the host
 
