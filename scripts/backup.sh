@@ -49,18 +49,84 @@ for service in $(docker compose config --services); do
   services+=("$service")
 done
 
-# Starts again whatever was running and is stopped now: the service stopped for its backup, and any service Compose
-# stopped along with it (one that depends on it).
+# What was running when the backup began. start_again starts whichever of it is stopped now: the service stopped for
+# its backup, and any service Compose stopped along with it (one that depends on it). On exit every one of them must
+# be running again, or the backup fails and names them (the scheduled backup then reports it down).
 running=$(docker compose ps --services --status running)
+
+# A stop can fail while the container is still on its way down: when its process is stuck writing to a network share
+# (NFS), Docker gives up waiting for it to exit ("tried to kill container, but did not receive an exit event").
+# Starting it again then does nothing, as it still runs, and once it exits nothing restarts it: `restart:
+# unless-stopped` doesn't after a stop, and autoheal only restarts running containers. So after a failed stop the
+# backup waits up to BACKUP_STOP_WAIT seconds (default 120) for the container to exit.
+stop_wait=${BACKUP_STOP_WAIT:-120}
+if ! [[ $stop_wait =~ ^[0-9]+$ ]]; then
+  echo "error: BACKUP_STOP_WAIT must be a number of seconds, not '$stop_wait'" >&2
+  exit 1
+fi
+# The service (and its container) whose stop failed and that was still running stop_wait seconds later.
+stuck=""
+stuck_id=""
+
+# Waits up to $2 seconds for container $1 to exit; fails if it's still running then.
+wait_exited() {
+  local deadline=$((SECONDS + $2))
+  while [ "$(docker inspect --format '{{.State.Running}}' "$1")" = true ]; do
+    if [ "$SECONDS" -ge "$deadline" ]; then return 1; fi
+    sleep 1
+  done
+}
+
+# Stops service $1 (container $2) for its backup. If the stop fails but the container exits within stop_wait, the
+# backup goes on: its data is as after a crash, which is what the app would start from anyway. If it still runs then,
+# the backup fails, and start_again waits for it once more before starting anything.
+stop_service() {
+  if docker compose stop "$1"; then return 0; fi
+  echo "warning: stopping $1 failed; waiting up to ${stop_wait}s for its container to exit" >&2
+  if wait_exited "$2" "$stop_wait"; then
+    echo "warning: $1 exited after its stop failed; backing it up as it was left" >&2
+    return 0
+  fi
+  stuck=$1
+  stuck_id=$2
+  echo "error: $1 still runs ${stop_wait}s after its stop failed; the backup stops here" >&2
+  return 1
+}
+
+# Starts again what was running and is stopped now, once no container is still on its way down (Compose would skip
+# it, and it would stay down once it exited).
 start_again() {
+  if [ -n "$stuck" ]; then
+    echo "Waiting up to ${stop_wait}s more for $stuck to exit before starting the services again"
+    if wait_exited "$stuck_id" "$stop_wait"; then stuck=""; fi
+  fi
   if [ -n "$running" ]; then
     # shellcheck disable=SC2086 # one service name per word
     docker compose start $running
   fi
 }
+
+# Fails, naming them, unless every service that was running when the backup began is running again.
+check_running() {
+  local now service down=""
+  now=$(docker compose ps --services --status running)
+  for service in $running; do
+    if [[ $'\n'"$now"$'\n' != *$'\n'"$service"$'\n'* ]]; then down="$down $service"; fi
+  done
+  if [ -n "$down" ]; then
+    echo "error: not running again after the backup:$down (start them: docker compose start$down)" >&2
+    return 1
+  fi
+  if [ -n "$stuck" ]; then
+    echo "error: $stuck never exited after its stop failed; it may still go down: check it, and start it again" \
+      "(docker compose start $stuck) if it has stopped" >&2
+    return 1
+  fi
+}
 finish() {
   status=$?
   start_again || status=1
+  check_running || status=1
   exit "$status"
 }
 trap finish EXIT
@@ -84,7 +150,7 @@ for service in "${services[@]}"; do
 
   if [[ $'\n'"$running"$'\n' == *$'\n'"$service"$'\n'* ]]; then
     echo "Stopping $service"
-    docker compose stop "$service"
+    stop_service "$service" "$id"
   fi
   archives=()
   for entry in "${mounts[@]}"; do
