@@ -26,6 +26,12 @@ scripts/backup.sh                       # into backups/<date>-<time>/ in the che
 scripts/backup.sh /path/to/backup-dir   # or a directory of your choice (new or empty)
 ```
 
+If stopping a service fails while its container is still on its way down (a process stuck writing to a network
+share can outlast Docker's stop), the backup waits up to `BACKUP_STOP_WAIT` seconds (default 120) for it to exit,
+then carries on. If it still runs then, the backup fails, but starts the services again only after waiting once
+more, so Compose doesn't skip a container that is about to exit. A backup that leaves any service down that was
+running when it began fails and names it.
+
 It **never** archives the media library, the transcode cache or Tdarr's logs: the library is far too large and
 is protected by snapshots on the storage that holds it; the cache and logs are disposable.
 

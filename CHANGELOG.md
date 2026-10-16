@@ -70,6 +70,17 @@ All notable changes to homelab-deimos are documented here. The format follows
   14 October 2026), so they deploy to the maintainer's server unattended; the nightly backup is the way back from a
   one-way data migration. Every Tdarr update, and any update Dependabot can't classify, is still merged by hand.
 
+### Fixed
+
+- `scripts/backup.sh` no longer leaves a service down when stopping it fails. A process that can't exit in time
+  (stuck writing to a network share) made the stop fail while its container was still on its way down; the backup
+  gave up, started the services again at once (Compose skipped the container, which still ran) and the service stayed
+  stopped once it exited, as `restart: unless-stopped` doesn't restart after a stop. The rest of the backup and the
+  copy off the host were never made. Now the backup waits up to `BACKUP_STOP_WAIT` seconds (default 120) for the
+  container to exit and carries on; if it still runs then, the backup fails and waits once more before starting
+  anything. Every service that was running when the backup began must be running again at the end, or the backup
+  fails and names it (the scheduled backup reports that to the push monitor).
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
