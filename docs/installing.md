@@ -5,11 +5,12 @@ The [quick start](quick-start.md) is the short version of this page.
 ## Requirements
 
 - Linux with Docker Engine and the Compose v2 plugin (Docker Engine 25 or later and Compose 2.24 or later, for
-  the health checks' `start_interval` and GPU device reservations). The reference host is **Ubuntu 24.04 on
-  amd64**; every image is chosen to publish `linux/amd64`.
+  the health checks' `start_interval`; **Docker Engine 29.2 or later on a host with a GPU**, see
+  [below](#the-gpu-and-docker-292)). The reference host is **Ubuntu 24.04 on amd64**; every image is chosen to
+  publish `linux/amd64`.
 - For hardware transcoding: an **NVIDIA GPU** (passed through to the VM if the host is virtual), the NVIDIA
   driver, and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-  configured for Docker (`sudo nvidia-ctk runtime configure --runtime=docker`, then restart Docker), and
+  1.18 or later configured for Docker (`sudo nvidia-ctk runtime configure --runtime=docker`, then restart Docker), and
   `COMPOSE_FILE=compose.yaml:compose.gpu.yaml` in `.env`. Without a GPU, leave that line out: Tdarr still runs
   and transcodes on the CPU.
 - A user in the `docker` group to run `docker compose`. Membership is equivalent to root on the host, so keep
@@ -17,6 +18,30 @@ The [quick start](quick-start.md) is the short version of this page.
 - The media library mounted on the host (local disk or a network share) and writable by `PUID`/`PGID`.
 - Disk for `CONFIG_ROOT`, which holds Tdarr's transcode cache too: room for several of your largest files at once,
   ideally on fast local disk rather than the network share.
+
+### The GPU and Docker 29.2
+
+From Docker Engine 29.2, Docker serves the GPU reservation in [`compose.gpu.yaml`](../compose.gpu.yaml)
+(`driver: nvidia`) through CDI, the Container Device Interface, whenever the NVIDIA Container Toolkit's
+`nvidia-cdi-hook` and a CDI spec for the GPU are installed. Toolkit 1.18 and later ship both, and its
+`nvidia-cdi-refresh` keeps the spec current at boot and after every driver install or upgrade
+(`nvidia-ctk cdi list` shows `nvidia.com/gpu=all`).
+
+An older Engine passes the GPU through the NVIDIA runtime hook instead, and with Docker's systemd cgroup driver (the
+default on cgroup v2) the container then **loses the GPU at every `systemctl daemon-reload`**, which apt and
+unattended-upgrades run. Tdarr can't use the GPU any more (NVENC/NVDEC fail), and `nvidia-smi` in the container
+fails with "Failed to initialize NVML: Unknown Error"
+([NVIDIA container-toolkit issue #48](https://github.com/NVIDIA/nvidia-container-toolkit/issues/48)); only
+restarting the container brings the GPU back, until the next reload. The compose files are the same either way:
+upgrading Docker is the fix (it restarts every container on the host).
+
+To check a GPU host, reload systemd and ask Tdarr for the GPU:
+
+```sh
+docker version --format '{{.Server.Version}}'   # 29.2 or later
+sudo systemctl daemon-reload
+docker exec tdarr nvidia-smi -L                 # still lists the GPU
+```
 
 ## Where data lives
 
