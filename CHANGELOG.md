@@ -37,6 +37,14 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- Docs: a GPU host needs **Docker Engine 29.2 or later** and NVIDIA Container Toolkit 1.18 or later
+  ([docs/installing.md](docs/installing.md#the-gpu-and-docker-292)). From 29.2 Docker serves `compose.gpu.yaml`'s
+  `driver: nvidia` reservation through CDI (the toolkit's `nvidia-cdi-hook`, with `nvidia-cdi-refresh` keeping the
+  spec current). On an older Engine it uses NVIDIA's runtime hook, and Tdarr loses the GPU at every
+  `systemctl daemon-reload` (apt and unattended-upgrades run one): `nvidia-smi` in the container fails with "Failed
+  to initialize NVML: Unknown Error" (NVIDIA container-toolkit issue #48). The docs give a check
+  (`sudo systemctl daemon-reload`, then `docker exec tdarr nvidia-smi -L`). The compose files are unchanged apart
+  from a comment.
 - Each app's data moves to one folder per app under the new required setting `CONFIG_ROOT`: its settings and
   database in `CONFIG_ROOT/<app>/config`, any other folder it needs beside that (`CONFIG_ROOT/tdarr/server`,
   `tdarr/logs`, `tdarr/transcode`, `haspelsync/logs`), the same layout as every homelab stack (the maintainer's

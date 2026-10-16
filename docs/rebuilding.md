@@ -24,17 +24,23 @@ Mount the media library at the same host path as before (`MEDIA_PATH` in the bac
 
 ## 2. The GPU driver
 
-Install the NVIDIA driver (`sudo ubuntu-drivers install`, then reboot) and check it with `nvidia-smi`.
+Install the NVIDIA driver (`sudo ubuntu-drivers install`, then reboot) and check it with `nvidia-smi`. After a
+later driver update, the NVIDIA Container Toolkit's `nvidia-cdi-refresh` (step 3) regenerates the GPU's CDI spec by
+itself.
 
 ## 3. Docker and the NVIDIA Container Toolkit
 
 Install Docker Engine and the Compose plugin from Docker's own repository, following
-[docs.docker.com/engine/install/ubuntu](https://docs.docker.com/engine/install/ubuntu/) (Docker Engine 25 or
+[docs.docker.com/engine/install/ubuntu](https://docs.docker.com/engine/install/ubuntu/) (Docker Engine 29.2 or
 later, Compose 2.24 or later). Then the
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html):
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+1.18 or later. Docker 29.2+ gives containers the GPU through CDI with the toolkit's `nvidia-cdi-hook` and the CDI
+spec its `nvidia-cdi-refresh` keeps current; an older Engine uses the NVIDIA runtime hook, and Tdarr then loses the
+GPU at every `systemctl daemon-reload` ([installing.md](installing.md#the-gpu-and-docker-292)).
 
 ```sh
 sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker
+nvidia-ctk cdi list                               # nvidia.com/gpu=all: the CDI spec Docker uses for the GPU
 docker run --rm --gpus all ubuntu nvidia-smi      # the GPU is visible to containers
 sudo usermod -aG docker "$USER"                   # equivalent to root on the host; log in again
 ```
@@ -66,6 +72,13 @@ docker compose config --quiet && docker compose pull
 scripts/restore.sh /path/to/backup    # verifies SHA256SUMS, creates the containers, asks first
 docker compose up -d --wait           # waits until every service reports healthy
 docker compose ps
+```
+
+With a GPU, check that Tdarr keeps it through a systemd reload (as apt and unattended-upgrades run one):
+
+```sh
+sudo systemctl daemon-reload
+docker exec tdarr nvidia-smi -L       # still lists the GPU; "Failed to initialize NVML" means Docker is older than 29.2
 ```
 
 Then sign in to each service: Tdarr should list its libraries, flows and history and see the GPU, and Spoolman

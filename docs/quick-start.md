@@ -1,8 +1,8 @@
 # Quick start
 
 You need a Linux host on amd64 (the reference is Ubuntu 24.04) with Docker Engine and the Compose v2 plugin, a
-user in the `docker` group, and, for hardware transcoding, an NVIDIA GPU with its driver and the NVIDIA Container
-Toolkit ([installing.md](installing.md#requirements)).
+user in the `docker` group, and, for hardware transcoding, an NVIDIA GPU with its driver, the NVIDIA Container
+Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](installing.md#requirements)).
 
 1. **Get the stack.**
 

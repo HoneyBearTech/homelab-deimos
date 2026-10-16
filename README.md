@@ -60,9 +60,10 @@ cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths an
 docker compose up -d --wait
 ```
 
-For Tdarr to use the GPU, the host needs the NVIDIA driver and the NVIDIA Container Toolkit, and `.env` needs
-`COMPOSE_FILE=compose.yaml:compose.gpu.yaml` ([installing](docs/installing.md#requirements)). The full steps are
-in the [quick start](docs/quick-start.md).
+For Tdarr to use the GPU, the host needs the NVIDIA driver, the NVIDIA Container Toolkit 1.18+ and Docker Engine
+29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs
+`COMPOSE_FILE=compose.yaml:compose.gpu.yaml` ([installing](docs/installing.md#the-gpu-and-docker-292)). The full
+steps are in the [quick start](docs/quick-start.md).
 
 ## Usage
 

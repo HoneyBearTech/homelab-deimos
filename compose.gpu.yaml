@@ -1,8 +1,10 @@
-# Gives Tdarr the host's NVIDIA GPU (NVENC/NVDEC). Needs the NVIDIA driver and the NVIDIA Container Toolkit on the
-# host (docs/installing.md). Used on the host through COMPOSE_FILE=compose.yaml:compose.gpu.yaml in .env; CI and the
-# smoke test leave it out, since their runners have no GPU. A reservation, not a device mapping or privileged mode:
-# the policy check refuses those (docs/security.md#policy). Tdarr keeps compose.yaml's hardening (no capabilities but
-# the ones it adds back, no new privileges): the NVIDIA runtime sets the GPU up from outside the container.
+# Gives Tdarr the host's NVIDIA GPU (NVENC/NVDEC). Needs the NVIDIA driver, NVIDIA Container Toolkit 1.18+ and
+# Docker Engine 29.2+ on the host: from 29.2 Docker serves `driver: nvidia` through CDI; on an older Engine (NVIDIA's
+# runtime hook) Tdarr loses the GPU at every `systemctl daemon-reload` (docs/installing.md#the-gpu-and-docker-292).
+# Used on the host through COMPOSE_FILE=compose.yaml:compose.gpu.yaml in .env; CI and the smoke test leave it out,
+# since their runners have no GPU. A reservation, not a device mapping or privileged mode: the policy check refuses
+# those (docs/security.md#policy). Tdarr keeps compose.yaml's hardening (no capabilities but the ones it adds back, no
+# new privileges): the NVIDIA runtime sets the GPU up from outside the container.
 services:
   tdarr:
     environment:

@@ -70,8 +70,10 @@ stop before restarting it; a service gets 10 minutes after it starts before fail
 ## GPU
 
 [`compose.gpu.yaml`](../compose.gpu.yaml) gives Tdarr the host's NVIDIA GPU as a Compose device reservation
-(`driver: nvidia`, `count: all`, `capabilities: [gpu]`), which needs the NVIDIA driver and the NVIDIA Container
-Toolkit on the host. It's a separate file so the stack also starts on a machine without a GPU, such as CI: set
+(`driver: nvidia`, `count: all`, `capabilities: [gpu]`), which needs the NVIDIA driver, the NVIDIA Container
+Toolkit (1.18 or later) and Docker Engine 29.2 or later on the host: from 29.2 Docker serves it through CDI, so Tdarr
+keeps the GPU through `systemctl daemon-reload` ([installing.md](installing.md#the-gpu-and-docker-292)). It's a
+separate file so the stack also starts on a machine without a GPU, such as CI: set
 `COMPOSE_FILE=compose.yaml:compose.gpu.yaml` in `.env` on the host. CI checks the policy with and without it.
 
 ## Volumes and mounts
