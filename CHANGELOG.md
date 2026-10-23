@@ -37,6 +37,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- The smoke test runs a stack's own steps from `scripts/smoke-stack.sh` when that exists (`smoke_prepare` before the
+  services start, `smoke_check` once they are healthy and again after the restore), gives a `*_SUBNET` setting a free
+  address range, and leaves a service with Docker secrets out of the restore's "recreated with older settings" check.
+  None of these is in use here; they keep the stacks' tooling the same.
 - Docs: a GPU host needs **Docker Engine 29.2 or later** and NVIDIA Container Toolkit 1.18 or later
   ([docs/installing.md](docs/installing.md#the-gpu-and-docker-292)). From 29.2 Docker serves `compose.gpu.yaml`'s
   `driver: nvidia` reservation through CDI (the toolkit's `nvidia-cdi-hook`, with `nvidia-cdi-refresh` keeping the
@@ -88,6 +92,10 @@ All notable changes to homelab-deimos are documented here. The format follows
   container to exit and carries on; if it still runs then, the backup fails and waits once more before starting
   anything. Every service that was running when the backup began must be running again at the end, or the backup
   fails and names it (the scheduled backup reports that to the push monitor).
+- `scripts/restore.sh` stops a service that bind-mounts a folder inside a mount it restores, and starts it again
+  afterwards. Such a container kept seeing the folder the restore had replaced, deleted, until it restarted (found on
+  homelab-hyperion, whose Steerhouse worker reads the API's Galaxy folder). No service here does that today; the smoke
+  test now checks it with a test container that follows another app's folder.
 
 ### Security
 
