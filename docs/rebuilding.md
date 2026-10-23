@@ -60,7 +60,10 @@ A server that follows `main` ([upgrading.md](upgrading.md#following-main)) stays
 
 Copy any `<service>.env` from the backup's `env/` the same way (mode `600`). Edit `.env` if the new host's
 paths differ (but keep the media library's container path; never point `CONFIG_ROOT` into `/var/lib/docker/volumes`),
-create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](installing.md#installing), step 3), then:
+create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](installing.md#installing), step 3), and put
+the Dozzle agent's certificate and key back from your password manager, owned by root
+([installing.md](installing.md#dozzles-certificate)): they aren't in the backup, and without them the restore can't
+create the agent's container. Then:
 
 ```sh
 docker compose config --quiet && docker compose pull
@@ -87,6 +90,8 @@ its spools.
 ## What the backup doesn't bring back
 
 - **The media library**: it lives on its own storage, protected there.
+- **The Dozzle agent's certificate and key** (`CONFIG_ROOT/dozzle/certs`): never backed up; they come from your
+  password manager (step 4).
 - **Host settings**: the static address, the GPU passthrough, the network share's mount, SSH keys, monitoring
   agents.
 - **Other machines' view of this one**: reverse proxy hosts, DNS records, anything that reaches Deimos by

@@ -89,6 +89,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/app/printers` | `CONFIG_ROOT/haspelsync/config` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
+| `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key` (read-only; Docker secrets) | `CONFIG_ROOT/dozzle/certs/dozzle_cert.pem` and `dozzle_key.pem`, owned by root ([installing.md](installing.md#dozzles-certificate)) | the Dozzle agent (`DOZZLE_CERT`, `DOZZLE_KEY` point at them) |
 
 ## Labels
 

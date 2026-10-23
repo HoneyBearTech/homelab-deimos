@@ -112,7 +112,9 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - The GPU is given to Tdarr as a device reservation through the NVIDIA runtime, never by running it privileged.
 - autoheal never gets the Docker socket: it goes through a proxy that only lets it list, inspect, restart and
   stop containers.
-- The Dozzle agent reads logs through the Docker socket: keep its port (7007) on the LAN.
+- The Dozzle agent reads logs through the Docker socket: it accepts only a Dozzle hub with the certificate and key
+  you made for them, never the pair built into every Dozzle image
+  ([docs/installing.md](docs/installing.md#dozzles-certificate)), and its port (7007) stays on the LAN.
 - Secrets (logins, API keys, printer credentials) live in each service's data, and the webhook and push monitor
   URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
   private and off the host.

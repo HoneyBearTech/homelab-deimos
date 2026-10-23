@@ -59,7 +59,7 @@ transcoding with these settings is checked on the host, not in CI.
 | tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged. Writable root: s6 runs its init from `/run`, and Tdarr updates its plugins and its own files in the image |
 | spoolman | `SETUID`, `SETGID` | yes (`/tmp` in memory) | Its entrypoint starts as root and switches to its user. `PUID`/`PGID` must stay 1000 (its user's ids): for others it rewrites `/etc/passwd` |
 | ams | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID` rather than its image's root, and writes only its printers and logs directories, which belong to that user |
-| dozzle-agent | none | yes (`/tmp` in memory) | Only reads the socket, which belongs to root; writes its address file to `/tmp` |
+| dozzle-agent | none | yes (`/tmp` in memory) | Only reads the socket and its certificate and key, all owned by root; writes its address file to `/tmp` |
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
 
@@ -81,9 +81,11 @@ offer nothing else. Without capabilities that root can only reach what it owns (
   `compose.yaml`) and lets autoheal only list, inspect, restart and stop containers; a flaw in the proxy would
   expose more. It has no published port and sits on an internal network that only autoheal joins.
 - **Dozzle's access to Docker.** The Dozzle agent needs the Docker socket to read logs; read-only mounting
-  doesn't limit the Docker API, so any Dozzle that can reach the agent's port, and anyone who can use that
-  Dozzle's web UI, can see every container's logs. It is an allowed exception (label in `compose.yaml`); keep its
-  port on the LAN.
+  doesn't limit the Docker API, so any Dozzle that the agent accepts, and anyone who can use that Dozzle's web UI,
+  can see every container's logs. The agent accepts only a Dozzle that presents its own certificate and key, never
+  the pair built into every Dozzle image ([installing.md](installing.md#dozzles-certificate)), so whoever holds the
+  key (root on the hub's host and on every agent's, and the password manager it is kept in) is trusted too. It is an
+  allowed exception (label in `compose.yaml`); keep its port on the LAN.
 - **Backups off the host from the host itself.** The scheduled backup can delete old backups on the backup
   server, so whoever controls this host can delete or overwrite them too. Snapshots or a versioned copy on the
   backup server, outside this host's reach, are what protect them; a recycle bin may not see deletions made over
@@ -102,6 +104,7 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 | Logins of services that have them | each service's data | the repository, `.env`, issues, logs you paste |
 | Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
 | autoheal's webhook URL | `autoheal.env` (gitignored, mode `600`) | same |
+| The Dozzle agent's key, shared with the Dozzle hub | `CONFIG_ROOT/dozzle/certs/dozzle_key.pem` (root, mode `600`) and a password manager | same, and the stack's backups |
 | The backup push monitor's URL | `backup.env` (gitignored, mode `600`) | same |
 | The key for the backup server | the backup user's `~/.ssh` on the host | same |
 | Backups of the data | off the host, mode `600` | anywhere public |
