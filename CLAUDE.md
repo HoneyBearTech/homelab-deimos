@@ -65,7 +65,8 @@ host's services goes to ares too (owner 2026-10-13).
   `org.honeybeartech.deimos.backup.exclude` label lists (none in use) are left out of the archive. Each service
   is stopped only while its data is copied; compression (pigz or gzip) runs after it starts again. `restore.sh`
   only writes mounts listed in the backup's MANIFEST that the service still mounts read-write, never a skipped
-  mount, and leaves excluded paths and nested mounts in place. Keep it that way when adding a service.
+  mount, and leaves excluded paths and nested mounts in place; a service that bind-mounts a folder inside a mount it
+  restores is stopped and started again with it. Keep it that way when adding a service.
 - **Every service is hardened** (`x-hardened`: `cap_drop: [ALL]`, `no-new-privileges:true`) and adds back only
   capabilities from Docker's default set that its image needs, each with a comment saying why and proven by the
   smoke test; the root filesystem is read-only (`tmpfs` for what the image writes) wherever that works cleanly
