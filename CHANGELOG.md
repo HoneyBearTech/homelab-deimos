@@ -8,6 +8,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **Put the Dozzle certificate and key in `CONFIG_ROOT/dozzle/certs` before deploying this** (owned by root; the
+  same pair on the Dozzle hub, which needs its own update: [docs/installing.md](docs/installing.md#dozzles-certificate)).
+  Without them the Dozzle agent doesn't start. Once the agent has its pair, the hub reaches it only after it has
+  the same one, so switch the agents and the hub one right after the other.
 - **Add `CONFIG_ROOT` to `.env` and move each app's data into its folder under it before deploying this** (see
   `.env.example`; never a folder inside `/var/lib/docker/volumes`). A deploy without `CONFIG_ROOT` stops at
   `docker compose config` and changes nothing. Stop the stack (`docker compose stop`) and leave it stopped until
@@ -99,6 +103,13 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Security
 
+- **The Dozzle agent no longer accepts the certificate built into every Dozzle image.** Dozzle v11.3.4 warned that
+  the agent used that pair, which every copy of the image ships, so anyone on the LAN with a Dozzle image could
+  connect to its port and read every container's log or control Docker through it. The agent now reads a pair of
+  its own, shared only with the homelab's Dozzle hub, from Docker secrets in `CONFIG_ROOT/dozzle/certs` (owned by
+  root, never committed or backed up), and doesn't start without it. The smoke test makes a throwaway pair and
+  checks that the agent accepts a hub with it and refuses one with the built-in pair
+  ([docs/installing.md](docs/installing.md#dozzles-certificate)).
 - The Dozzle agent moves to v11.3.4 (built with Go 1.27.3), which fixes the image scan's Go `crypto/x509` finding
   (CVE-2026-111943) in v11.3.2. Dependabot didn't propose it: it holds back Docker Hub releases for a few days
   after they're published, and both v11.3.3 and v11.3.4 were still that new at its last run.

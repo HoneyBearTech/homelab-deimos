@@ -33,6 +33,10 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
      "$CONFIG_ROOT"/haspelsync/{config,logs}
    ```
 
+   The Dozzle agent also needs the certificate and key it shares with your Dozzle hub, in
+   `CONFIG_ROOT/dozzle/certs` and owned by root; it doesn't start without them
+   ([installing.md](installing.md#dozzles-certificate) has the commands).
+
 4. **Check the GPU** is visible to containers (skip this without one):
 
    ```sh

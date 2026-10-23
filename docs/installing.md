@@ -59,6 +59,7 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | Spoolman's database | `CONFIG_ROOT/spoolman/config` | `/home/app/.local/share/spoolman` |
 | The AMS app's printer list (with the printers' access codes) and settings | `CONFIG_ROOT/haspelsync/config` | `/app/printers` |
 | The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
+| The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
 
 The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
 largest files at once, so `CONFIG_ROOT` should be on a disk with that much space. Every mount is listed in
@@ -82,6 +83,9 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
      "$CONFIG_ROOT"/haspelsync/{config,logs}
    ```
 
+   The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
+   ([below](#dozzles-certificate)).
+
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
 containers, copy each one's data into its folder with the owners kept (`cp -a`; they should be `PUID:PGID`), and
@@ -92,6 +96,52 @@ first, and remove the old copies only once the stack runs from `CONFIG_ROOT`.
 
 The maintainer's server runs `main` rather than a release, and deploys every merge by itself
 ([upgrading.md](upgrading.md#following-main)). For your own setup, a release is the safer choice.
+
+## Dozzle's certificate
+
+The Dozzle agent and the homelab's Dozzle (the hub, on another host) authenticate each other with a certificate and
+key: each end presents the pair and accepts only a peer that presents the same one. Every Dozzle image also ships a
+built-in pair, the same in every copy, so an agent that uses it accepts anyone on the network who has a Dozzle image,
+and through it they can read every container's log and control Docker. This stack never uses the built-in pair: the
+agent reads its own from two files under `CONFIG_ROOT/dozzle/certs` (Docker secrets, mounted read-only in
+`/run/secrets`), and it doesn't start while either file is missing.
+
+| File | Owner, mode | What |
+| --- | --- | --- |
+| `CONFIG_ROOT/dozzle/certs/dozzle_cert.pem` | `root:root`, `644` | The certificate (self-signed, valid for five years) |
+| `CONFIG_ROOT/dozzle/certs/dozzle_key.pem` | `root:root`, `600` | Its private key: **a secret**; whoever holds it can connect to the agent |
+
+Both belong to root: the agent runs as root without capabilities, so it can read only a file that root owns (or one
+that every user can read, which the key must never be).
+
+**One pair for the hub and all its agents.** Make it once, on a machine you trust, with the Dozzle image this stack
+pins (the `image:` of `dozzle-agent` in `compose.yaml`):
+
+```sh
+mkdir -m 700 dozzle-pair
+docker run --rm --network none -v "$PWD/dozzle-pair:/out" amir20/dozzle:<tag>@sha256:<digest> \
+  --no-analytics generate-certs --cert-out /out/dozzle_cert.pem --key-out /out/dozzle_key.pem
+```
+
+Save both files in a password manager: they are never in the stack's backups (`scripts/backup.sh` copies read-write
+mounts only), so that is where a rebuilt host gets them back from. Then copy them to every host that runs the hub or
+an agent (for example with `scp` into your home directory) and, in each checkout, put them in place:
+
+```sh
+. ./.env
+sudo install -d -o root -g root -m 755 "$CONFIG_ROOT/dozzle/certs"
+sudo install -o root -g root -m 644 ~/dozzle_cert.pem "$CONFIG_ROOT/dozzle/certs/dozzle_cert.pem"
+sudo install -o root -g root -m 600 ~/dozzle_key.pem "$CONFIG_ROOT/dozzle/certs/dozzle_key.pem"
+rm ~/dozzle_cert.pem ~/dozzle_key.pem
+```
+
+`docker compose logs dozzle-agent` then says `Loaded custom dozzle certificate and key` at each start. The hub and every
+agent must hold the same pair: an agent refuses a hub with any other one, and the hub then shows that host as
+unavailable. So to change it (before it expires, or at once if the key may have leaked), put the new pair on every
+host first, then recreate the hub and each agent with it, one right after the other
+(`docker compose up -d --force-recreate dozzle-agent` here): until the last one has it, the hub can't show the hosts whose
+pair differs from its own. The logs themselves aren't lost: Docker keeps them, and the hub shows them again once
+it reaches the agent.
 
 ## Scheduled backups
 
@@ -168,7 +218,8 @@ its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refus
 - **The GPU through the NVIDIA runtime only.** Tdarr gets the GPU as a device reservation; never run it
   privileged to reach the GPU.
 - **The Dozzle agent can read every container's logs and, through the Docker socket, control Docker**, for any
-  Dozzle that connects to it. Keep its port (7007) on the LAN only.
+  Dozzle that connects to it with its certificate and key ([Dozzle's certificate](#dozzles-certificate)). Keep the
+  key secret, and the agent's port (7007) on the LAN only.
 - Keep `.env` at mode `600`; it holds no secrets by design, but it describes your host.
 - Back up the services' data in `CONFIG_ROOT` ([upgrading.md](upgrading.md#backing-up)), nightly and off the host
   ([scheduled backups](#scheduled-backups)).
