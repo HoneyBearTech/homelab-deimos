@@ -173,6 +173,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp # its address file, read by the health check
+      - /data # the notification settings the Dozzle hub sends it, which the hub sends again each time it starts
     command: agent
     healthcheck:
       <<: *healthcheck

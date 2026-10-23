@@ -7,7 +7,7 @@
 
 # The Dozzle agent: a throwaway certificate and key, made with `dozzle generate-certs` as on the host and owned by root
 # as there; then that the agent loaded them, accepts a hub presenting them and refuses one presenting the pair built
-# into every Dozzle image.
+# into every Dozzle image, and that it keeps the notification settings such a hub sends it as it starts.
 dozzle_service=dozzle-agent
 
 # The Dozzle image compose.yaml pins.
@@ -35,8 +35,11 @@ dozzle_agent_test() {
     "$dozzle_service:7007" </dev/null 2>&1
 }
 
+# The agent's log lines about notification settings from a hub, one per line.
+dozzle_settings_log() { compose logs --no-color "$dozzle_service" | grep "notification config" || true; }
+
 smoke_check() {
-  local logs out
+  local logs out before
   logs=$(compose logs --no-color "$dozzle_service")
   [[ $logs == *"Loaded custom dozzle certificate and key"* ]] ||
     fail "the Dozzle agent didn't load its certificate and key"
@@ -45,5 +48,26 @@ smoke_check() {
     -e DOZZLE_KEY=/certs/dozzle_key.pem) || fail "the Dozzle agent refused a hub with its certificate and key: $out"
   out=$(dozzle_agent_test) && fail "the Dozzle agent accepted a hub with the built-in certificate"
   [[ $out == *"certificate"* ]] || fail "unexpected error from a hub with the built-in certificate: $out"
-  echo "Dozzle agent: accepts a hub with its own certificate and key, refuses one with the built-in pair"
+  # A hub with the pair (and no Docker of its own) sends the agent its notification settings as it starts, and the
+  # agent saves them to /data: that must not be its read-only root. If the test stops while the hub runs, the EXIT
+  # trap removes the hub before the rest.
+  dozzle_hub=${project}-dozzle-hub
+  before=$(dozzle_settings_log | wc -l)
+  trap 'status=$?; docker rm -f "$dozzle_hub" >/dev/null 2>&1; (exit "$status"); cleanup' EXIT
+  docker run --detach --name "$dozzle_hub" --network "${project}_default" -v "$(dozzle_certs):/certs:ro" \
+    -e DOZZLE_CERT=/certs/dozzle_cert.pem -e DOZZLE_KEY=/certs/dozzle_key.pem \
+    -e DOZZLE_REMOTE_AGENT="$dozzle_service:7007" "$(dozzle_image)" --no-analytics </dev/null >/dev/null
+  for _ in $(seq 1 30); do
+    out=$(dozzle_settings_log | tail -n "+$((before + 1))")
+    [ -z "$out" ] || break
+    sleep 1
+  done
+  docker rm -f "$dozzle_hub" >/dev/null
+  trap cleanup EXIT
+  [[ $out == *"Updated notification config from main server"* ]] ||
+    fail "the Dozzle agent didn't take the notification settings a hub sent it: ${out:-it logged nothing}"
+  [[ $(compose logs --no-color "$dozzle_service") != *"read-only file system"* ]] ||
+    fail "the Dozzle agent tried to write to its read-only root filesystem"
+  echo "Dozzle agent: accepts a hub with its own certificate and key and keeps its notification settings, refuses" \
+    "one with the built-in pair"
 }

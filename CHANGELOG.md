@@ -88,6 +88,13 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Fixed
 
+- **The Dozzle agent keeps the notification settings the Dozzle hub sends it in memory** (`/data` is a tmpfs now).
+  It saves them to `/data`, which was part of its read-only root filesystem, so each time the hub started the agent
+  logged "failed to save config: open ./data/notifications.yml: read-only file system" and "Could not remove cloud.yml
+  on agent", and the hub "Failed to broadcast notification config to agent". The hub keeps these settings itself and
+  sends them again each time it starts, so nothing is kept on disk or in the backups. The smoke test now starts a
+  throwaway hub and checks that the agent takes its settings. Nothing to do on the host.
+
 - `scripts/backup.sh` no longer leaves a service down when stopping it fails. A process that can't exit in time
   (stuck writing to a network share) made the stop fail while its container was still on its way down; the backup
   gave up, started the services again at once (Compose skipped the container, which still ran) and the service stayed
