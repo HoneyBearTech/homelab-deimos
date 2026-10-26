@@ -5,7 +5,26 @@ How to bring the stack back on a new or wiped machine from a backup made by `scr
 
 > **Planned:** the rebuild hasn't been rehearsed on a scratch machine yet ([roadmap](roadmap.md)).
 
-You need: the backup directory (copied off the old host), this repository, and access to the media library.
+You need: the backup directory (copied off the old host), **the age private key** it was encrypted to if the copies
+off the host are encrypted (`BACKUP_AGE_RECIPIENT`), this repository, and access to the media library.
+
+## An encrypted backup
+
+A scheduled backup copied off the host with `BACKUP_AGE_RECIPIENT` set (its folder on the backup server holds only
+`backup.tar.age` and `SHA256SUMS`) is opened on the machine that holds the age private key, never on the backup
+server or the new host. Copy it there and check it, then decrypt it, which gives the backup directory as it was
+written on the old host, and copy that to the new host once it is installed (step 1). It is then `~/restore` there,
+the backup directory of steps 4 and 5; keep it private, it holds every login:
+
+```sh
+rsync -rlpt backup-host:/volume1/<folder>/<date>-<time>/ ~/sealed/
+cd ~/sealed && sha256sum -c --quiet SHA256SUMS && cd -
+(umask 077 && age -d -i deimos-backup.key ~/sealed/backup.tar.age | tar -x -C ~)   # ~/<date>-<time>/
+rsync -rlpt ~/<date>-<time>/ <you>@<the new host>:restore/
+rm -rf ~/sealed ~/<date>-<time>
+```
+
+`scripts/restore.sh` checks the backup's own `SHA256SUMS` again before it writes anything (step 5).
 
 ## 1. The operating system
 

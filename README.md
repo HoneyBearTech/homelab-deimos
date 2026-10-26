@@ -117,7 +117,7 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
   ([docs/installing.md](docs/installing.md#dozzles-certificate)), and its port (7007) stays on the LAN.
 - Secrets (logins, API keys, printer credentials) live in each service's data, and the webhook and push monitor
   URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
-  private and off the host.
+  private and off the host, and encrypt the copy that leaves it (`BACKUP_AGE_RECIPIENT`).
 - Don't run an auto-updater such as Watchtower on these containers; upgrade from this repository instead (a
   release, or `main`).
 - Every service drops every Linux capability and can't gain new privileges; Tdarr and Spoolman add back only the

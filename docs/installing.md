@@ -18,6 +18,7 @@ The [quick start](quick-start.md) is the short version of this page.
 - The media library mounted on the host (local disk or a network share) and writable by `PUID`/`PGID`.
 - Disk for `CONFIG_ROOT`, which holds Tdarr's transcode cache too: room for several of your largest files at once,
   ideally on fast local disk rather than the network share.
+- `age` if the backups are copied off the host encrypted ([Scheduled backups](#scheduled-backups)).
 
 ### The GPU and Docker 29.2
 
@@ -145,11 +146,12 @@ it reaches the agent.
 
 ## Scheduled backups
 
-`scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync, keeps
-only the newest few in both places and reports to an Uptime Kuma push monitor. A systemd timer runs it nightly.
-Every setting is in the optional `backup.env` ([interfaces.md](interfaces.md#backupenv)). The backups hold every
-login and the printers' access codes: copy them only to a machine you trust as much as this one. The media library
-is never in them; protect it with snapshots where it is stored.
+`scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync
+(encrypted with age, when `BACKUP_AGE_RECIPIENT` is set), keeps only the newest few in both places and reports to an
+Uptime Kuma push monitor. A systemd timer runs it nightly. Every setting is in the optional `backup.env`
+([interfaces.md](interfaces.md#backupenv)). The backups hold every login and the printers' access codes: copy them
+only to a machine you trust as much as this one, or encrypt the copy (step 3). The media library is never in them;
+protect it with snapshots where it is stored.
 
 1. **On the backup server**, create a folder for the backups and a user that can write only there and use rsync
    over SSH (on a Synology: a shared folder, a non-admin user with read/write on that folder only, rsync allowed
@@ -160,11 +162,11 @@ is never in them; protect it with snapshots where it is stored.
    rotation, into a folder the backup user has no access to). A recycle bin isn't enough: Synology's doesn't keep
    files deleted over rsync.
 2. **On this host**, as the user who runs the stack, install rsync and curl (and pigz, which compresses the
-   archives on every core instead of one), and create a key used only for the backups, with an alias for it in
-   `~/.ssh/config`:
+   archives on every core instead of one; age, to encrypt the copy), and create a key used only for the backups,
+   with an alias for it in `~/.ssh/config`:
 
    ```sh
-   sudo apt install -y rsync curl pigz
+   sudo apt install -y rsync curl pigz age
    ssh-keygen -t ed25519 -N '' -f ~/.ssh/homelab-deimos-backup
    ```
 
@@ -179,13 +181,20 @@ is never in them; protect it with snapshots where it is stored.
    Add the public key to the backup user's `~/.ssh/authorized_keys` on the server, prefixed with
    `restrict,from="<this host's address>"` (no shell or forwarding, and only from this host), then check that
    `rsync --list-only backup-host:/volume1/<folder>/` works without a password prompt.
-3. **Settings**: `cp backup.env.example backup.env && chmod 600 backup.env`, then set
-   `BACKUP_REMOTE=backup-host:/volume1/<folder>` and, optionally, the retention and `BACKUP_PING_URL`. For the
-   ping, add a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
-4. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is copied (compression
+3. **The encryption key** (optional, recommended), on another machine you trust (not this host):
+   `age-keygen -o deimos-backup.key`. It prints the public key (`age1...`). Keep the key file where you keep your
+   other recovery secrets, such as a password manager, and never copy it to this host: without it no encrypted
+   backup off the host can be read, and with it any of them can.
+4. **Settings**: `cp backup.env.example backup.env && chmod 600 backup.env`, then set
+   `BACKUP_REMOTE=backup-host:/volume1/<folder>`, `BACKUP_AGE_RECIPIENT=age1...` (the public key from step 3; leave
+   it empty to copy the backups as they are) and, optionally, the retention and `BACKUP_PING_URL`. For the ping, add
+   a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
+5. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is copied (compression
    runs after it starts again): Spoolman and the AMS app for seconds, Tdarr for as long as its database takes to
-   copy, and a transcode it was running starts over.
-5. **Schedule it**, with the systemd user units in [`deploy/systemd/`](../deploy/systemd/) (they expect the
+   copy, and a transcode it was running starts over. With `BACKUP_AGE_RECIPIENT`, the copy off the host is one
+   folder per backup holding only `backup.tar.age` and its `SHA256SUMS`; the backup itself stays readable here, in
+   `BACKUP_DIR`.
+6. **Schedule it**, with the systemd user units in [`deploy/systemd/`](../deploy/systemd/) (they expect the
    checkout at `~/homelab-deimos`; edit both paths in the `.service` file if it's elsewhere). Pick an hour when
    Tdarr's queue is quiet and nobody prints (`OnCalendar` in the `.timer` file). Lingering lets the timer run while
    you're logged out:
@@ -201,7 +210,10 @@ is never in them; protect it with snapshots where it is stored.
    ```
 
 Restore a copy from the backup server as [rebuilding.md](rebuilding.md) describes; `scripts/restore.sh` verifies
-its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refused.
+its `SHA256SUMS` first, and a copy that was cut off has none yet, so it is refused. An encrypted copy is decrypted
+first with the private key (`age -d -i deimos-backup.key backup.tar.age | tar -x`), which gives the backup directory
+`scripts/restore.sh` reads; check the copy's `SHA256SUMS` before that (it is sent last, so a copy that was cut off
+has none; [rebuilding.md](rebuilding.md#an-encrypted-backup)).
 
 ## Running it securely
 

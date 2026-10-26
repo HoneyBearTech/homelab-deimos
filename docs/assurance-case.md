@@ -14,7 +14,7 @@ the secure design principles it follows, and how common weaknesses are countered
 | Container logs, the Docker API | Someone on the LAN points a Dozzle of their own at the Dozzle agent's port | The agent accepts only a peer presenting the homelab's own certificate and key (Docker secrets owned by root, never committed or backed up), never the pair built into every Dozzle image, and doesn't start without them; the smoke test proves both; port 7007 on the LAN only; the socket mounted read-only (which protects the socket file, not the API); a labelled, reviewed exception ([security.md](security.md#what-it-doesnt-protect)) |
 | The host's devices | The GPU granted by running privileged | GPU only as a device reservation through the NVIDIA runtime; `privileged` refused by the policy check |
 | Logins, printer credentials | Committed to the public repository | Kept in the services' data, never in the repo; `.gitignore`; GitHub push protection; gitleaks over the history in CI |
-| Logins, printer credentials | Leaked through a backup | `scripts/backup.sh` writes backups readable only by the user who ran it; documented as secret, to be kept off the host |
+| Logins, printer credentials | Leaked through a backup | `scripts/backup.sh` writes backups readable only by the user who ran it; documented as secret, to be kept off the host; the scheduled copy off the host can be encrypted with age to a key that isn't on the host (`BACKUP_AGE_RECIPIENT`) |
 | The services' data | A deploy recreating services halfway through a backup or restore | `backup.sh` and `restore.sh` take the pull agent's own lock before anything stops (waiting up to 30 minutes for a deploy in progress), and the agent skips its run while it's held; tested against a lock held the way the agent holds it |
 | The services' data | An upgrade that migrates and breaks it | Backup before every update merged by hand, nightly otherwise; rollback = a revert (or the old tag) + `scripts/restore.sh`, exercised by the CI smoke test |
 | The host | A bad change merged to `main` deploying by itself | The required checks (policy check, smoke test) pass before any merge; every Tdarr update is merged by hand, and a major update that breaks a service is undone with a revert pull request and, after a one-way data migration, a restore from the nightly backup; the pull agent only fast-forwards and backs out a change that doesn't resolve or pull; rollback is a revert pull request |
@@ -73,8 +73,9 @@ data or the media library's storage.
 - CI on every change: ruff (with the bandit rules), yamllint, actionlint, gitleaks over the history,
   shellcheck, pytest with a 90 % branch-coverage floor, `docker compose config`, the policy check (with and
   without the GPU file), and a smoke test on amd64 that starts every pinned image without a GPU, waits for its health
-  check, round-trips a backup and restore, and checks that excluded mounts are left alone (a dynamic test of the
-  stack and the scripts).
+  check, round-trips a backup and restore, checks that excluded mounts are left alone and checks the encrypted copy
+  off the host (only the archive leaves, the right key opens it, another doesn't) (a dynamic test of the stack and
+  the scripts).
 - A weekly Trivy scan of every pinned image, and on every change to `compose.yaml`, into code scanning.
 - CodeQL (Python and Actions) on every pull request and weekly; OpenSSF Scorecard weekly; dependency
   review on every pull request.

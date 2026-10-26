@@ -128,9 +128,10 @@ host's services goes to ares too (owner 2026-10-13).
 - Tooling (kept the same as homelab-ares'): `scripts/check_compose.py` (Python, standard library only:
   policy check + CycloneDX SBOM), `scripts/backup.sh`, `restore.sh`, `scheduled-backup.sh`, `smoke-test.sh`,
   `lib.sh` (bash, must run on macOS' bash 3.2); `scheduled-backup.sh` (run nightly by the systemd user units in
-  `deploy/systemd/`) pushes with rsync to `BACKUP_REMOTE` and pings an Uptime Kuma push monitor, with its settings
-  in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU rsync and macOS'
-  openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
+  `deploy/systemd/`) pushes with rsync to `BACKUP_REMOTE` (with `BACKUP_AGE_RECIPIENT`, only `backup.tar.age` +
+  `SHA256SUMS`, encrypted to that age key; CI installs age so the smoke test covers it) and pings an Uptime Kuma push
+  monitor, with its settings in the gitignored `backup.env` (read as data, never sourced), not `.env`, and needs GNU
+  rsync and macOS' openrsync alike (no `--chmod`); ruff (`select = ["ALL"]`), yamllint, shellcheck, pytest + coverage (90 % branch floor),
   pip-tools for the hash-pinned `requirements-dev.txt`. CI-only: actionlint, gitleaks, CodeQL, Scorecard,
   dependency review, DCO, Trivy image scan, Dependabot auto-merge (patch/minor/major, rebuilds; never Tdarr). CI logs in to Docker Hub with
   the read-only `DOCKERHUB_*` secrets when they exist (anonymous otherwise) and logs out before the smoke test

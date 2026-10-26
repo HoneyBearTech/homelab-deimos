@@ -118,17 +118,21 @@ done < <(COMPOSE_FILE=$root/compose.yaml docker compose config |
 
 # The app whose data a test container follows (follower-test, below): the last one with a config folder under
 # CONFIG_ROOT, so not the one the restore round trip moves elsewhere. The folder it follows is made, and owned, like
-# the others.
+# the others. A stack with only one such app has nothing to follow it with: that app goes to the round trip, and
+# follower-test isn't run.
 config_root=$(sed -n 's/^CONFIG_ROOT=//p' "$work/env")
 follow_leader=""
+config_dirs=0
 for dir in "${data_dirs[@]+"${data_dirs[@]}"}"; do
   case $dir in
     "$config_root"/*/config)
       follow_leader=${dir#"$config_root"/}
       follow_leader=${follow_leader%/config}
+      config_dirs=$((config_dirs + 1))
       ;;
   esac
 done
+if [ "$config_dirs" -lt 2 ]; then follow_leader=""; fi
 if [ -n "$follow_leader" ]; then
   mkdir -p "$config_root/$follow_leader/config/smoke-follower"
   data_dirs+=("$config_root/$follow_leader/config/smoke-follower")
@@ -390,6 +394,35 @@ if [ ${#targets[@]} -gt 0 ]; then
   [ "$(compose ps --services --status running | wc -l)" -eq "$(compose config --services | wc -l)" ] ||
     fail "scheduled-backup.sh didn't leave every service running"
   echo "The scheduled backup was copied intact, and only the newest backups were kept"
+
+  # With BACKUP_AGE_RECIPIENT, only an encrypted archive leaves the host, and the recipient's key opens it into the
+  # backup as written here. Needs age (CI installs it); skipped without it.
+  if command -v age >/dev/null && command -v age-keygen >/dev/null; then
+    echo "Scheduled backup: encrypted copy off the host"
+    (umask 077 && age-keygen -o "$work/age.key" 2>/dev/null)
+    recipient=$(age-keygen -y "$work/age.key")
+    rm -rf "$work/remote-age"
+    mkdir -p "$work/remote-age"
+    sleep 1 # a new backup name (the time, to the second)
+    printf 'BACKUP_DIR=%s\nBACKUP_REMOTE=%s\nBACKUP_AGE_RECIPIENT=%s\n' "$work/scheduled" "$work/remote-age" \
+      "$recipient" >"$work/backup.env"
+    BACKUP_ENV_FILE=$work/backup.env "$root/scripts/scheduled-backup.sh"
+    sealed=$(entries "$work/remote-age" | tr -d ' ')
+    [[ $sealed =~ ^[0-9]{8}-[0-9]{6}$ ]] || fail "expected one backup at the remote, found: $sealed"
+    [ "$(entries "$work/remote-age/$sealed")" = "SHA256SUMS backup.tar.age " ] ||
+      fail "the encrypted copy holds more than the archive and its SHA256SUMS: $(entries "$work/remote-age/$sealed")"
+    (cd "$work/remote-age/$sealed" && sha256 -c --quiet SHA256SUMS) || fail "the encrypted copy doesn't match its SHA256SUMS"
+    [ -z "$(find "$work/remote-age/$sealed" -perm -004)" ] || fail "the encrypted copy is readable by other users"
+    mkdir "$work/opened"
+    age -d -i "$work/age.key" "$work/remote-age/$sealed/backup.tar.age" | tar -x -C "$work/opened"
+    (cd "$work/opened/$sealed" && sha256 -c --quiet SHA256SUMS) || fail "the decrypted backup doesn't match its SHA256SUMS"
+    if age -d -i <(age-keygen 2>/dev/null) "$work/remote-age/$sealed/backup.tar.age" >/dev/null 2>&1; then
+      fail "another key opened the encrypted copy"
+    fi
+    echo "Only an encrypted archive left the host, and the recipient's key opened it into the whole backup"
+  else
+    echo "age isn't installed; skipping the encrypted copy"
+  fi
 fi
 
 if $has_autoheal; then
