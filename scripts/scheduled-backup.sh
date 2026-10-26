@@ -12,6 +12,9 @@
 #   BACKUP_REMOTE       rsync destination, such as an SSH alias and directory (backup-host:/volume1/deimos-backups);
 #                       empty = no copy off the host
 #   BACKUP_REMOTE_KEEP  how many to keep at BACKUP_REMOTE (default: 30)
+#   BACKUP_AGE_RECIPIENT  an age public key (age1...): the copy off the host is then one archive of the backup,
+#                       encrypted to that key (backup.tar.age, with its SHA256SUMS), and only the key's owner can read
+#                       it; empty = the backup is copied as it is
 #   BACKUP_PING_URL     an Uptime Kuma push URL, told "up" after a good run and "down" after a failed one
 #
 # Only directories named like a backup (<date>-<time>) are ever pruned, here or at BACKUP_REMOTE. A copy is complete
@@ -29,6 +32,7 @@ BACKUP_KEEP=3
 BACKUP_REMOTE=
 BACKUP_REMOTE_KEEP=30
 BACKUP_PING_URL=
+BACKUP_AGE_RECIPIENT=
 env_file=${BACKUP_ENV_FILE:-$root/backup.env}
 if [ -f "$env_file" ]; then
   # Read as data, never sourced: only these keys, one KEY=value per line.
@@ -39,7 +43,8 @@ if [ -f "$env_file" ]; then
     value=${value#\"}
     value=${value%\"}
     case $key in
-      BACKUP_DIR | BACKUP_KEEP | BACKUP_REMOTE | BACKUP_REMOTE_KEEP | BACKUP_PING_URL) printf -v "$key" '%s' "$value" ;;
+      BACKUP_DIR | BACKUP_KEEP | BACKUP_REMOTE | BACKUP_REMOTE_KEEP | BACKUP_PING_URL | BACKUP_AGE_RECIPIENT)
+        printf -v "$key" '%s' "$value" ;;
       *)
         echo "error: unknown setting '$key' in $env_file" >&2
         exit 1
@@ -53,6 +58,16 @@ for key in BACKUP_KEEP BACKUP_REMOTE_KEEP; do
     exit 1
   fi
 done
+if [ -n "$BACKUP_AGE_RECIPIENT" ]; then
+  if ! [[ $BACKUP_AGE_RECIPIENT =~ ^age1[02-9ac-hj-np-z]{58}$ ]]; then
+    echo "error: BACKUP_AGE_RECIPIENT must be an age public key (age1 and 58 more characters)" >&2
+    exit 1
+  fi
+  if ! command -v age >/dev/null; then
+    echo "error: BACKUP_AGE_RECIPIENT is set but age isn't installed (docs/installing.md#scheduled-backups)" >&2
+    exit 1
+  fi
+fi
 
 # Tell the push monitor how the run went; a monitor that hears nothing alerts on its own, so a failed ping is only
 # a warning. The URL Uptime Kuma shows may already carry a query string; it is replaced. Retried for two minutes:
@@ -87,10 +102,28 @@ size=$(du -sh "$BACKUP_DIR/$name" | cut -f1 | tr -d ' ')
 
 if [ -n "$BACKUP_REMOTE" ]; then
   remote=${BACKUP_REMOTE%/}
+  source_dir=$BACKUP_DIR/$name
+  if [ -n "$BACKUP_AGE_RECIPIENT" ]; then
+    # The whole backup in one archive, encrypted to the recipient before it leaves the host; the host can write it
+    # but not read it back. Decrypted (age -d -i <key> backup.tar.age | tar -x), it is the backup as written here.
+    sealed=$(mktemp -d)
+    # Removes the encrypted copy here, keeping the exit status for report.
+    unseal() {
+      local status=$?
+      rm -rf "$sealed"
+      return "$status"
+    }
+    trap 'unseal; report' EXIT
+    mkdir -m 700 "$sealed/$name"
+    (umask 077 && tar -C "$BACKUP_DIR" -cf - "$name" | age -r "$BACKUP_AGE_RECIPIENT" -o "$sealed/$name/backup.tar.age")
+    (cd "$sealed/$name" && sha256 backup.tar.age >SHA256SUMS && chmod 600 SHA256SUMS)
+    source_dir=$sealed/$name
+    echo "Encrypted $name for the copy off the host"
+  fi
   echo "Copying $name to $remote"
   # -rlpt keeps the modes (600 files, 700 directories) but not owners. SHA256SUMS goes last, marking the copy complete.
-  rsync -rlpt --exclude=/SHA256SUMS "$BACKUP_DIR/$name/" "$remote/$name/"
-  rsync -rlpt "$BACKUP_DIR/$name/SHA256SUMS" "$remote/$name/"
+  rsync -rlpt --exclude=/SHA256SUMS "$source_dir/" "$remote/$name/"
+  rsync -rlpt "$source_dir/SHA256SUMS" "$remote/$name/"
 
   old=$(rsync --list-only "$remote/" | awk '{print $NF}' | outdated "$BACKUP_REMOTE_KEEP")
   if [ -n "$old" ]; then
@@ -110,5 +143,5 @@ if [ -n "$old" ]; then
   while IFS= read -r dir; do rm -rf "${BACKUP_DIR:?}/$dir"; done <<<"$old"
 fi
 
-ping_monitor up "backup $name, $size${BACKUP_REMOTE:+, copied off the host}"
+ping_monitor up "backup $name, $size${BACKUP_REMOTE:+, copied off the host}${BACKUP_AGE_RECIPIENT:+ encrypted}"
 echo "Done: $name ($size)"

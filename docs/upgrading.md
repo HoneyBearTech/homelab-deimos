@@ -45,7 +45,8 @@ isn't installed (it keeps no state for the stack), nothing changes.
 The directory holds one `<service>--<path>.tar.gz` per mount, the settings under `env/`, a `MANIFEST` naming
 each archive's service, container path, host path and image, `NETWORKS`, `VERSION` (the checkout it was taken
 with) and `SHA256SUMS`. Everything in it is readable only by the user who ran the backup. **Copy it off the
-host.** [Scheduled backups](installing.md#scheduled-backups) do this nightly and copy each backup off the host.
+host.** [Scheduled backups](installing.md#scheduled-backups) do this nightly and copy each backup off the host,
+encrypted with age when `BACKUP_AGE_RECIPIENT` is set.
 
 ## Upgrading
 
@@ -110,3 +111,8 @@ snapshots.
 
 See [rebuilding.md](rebuilding.md): install the host, restore `.env`, then `scripts/restore.sh` creates the
 containers and fills their data from the backup.
+
+A backup copied off the host with `BACKUP_AGE_RECIPIENT` set is encrypted to that age key: restoring from it needs
+**the private key**, on the machine that holds it (`age -d -i deimos-backup.key backup.tar.age | tar -x` gives back
+the backup directory; [rebuilding.md](rebuilding.md#an-encrypted-backup)). The backups in `BACKUP_DIR` on the host
+aren't encrypted.

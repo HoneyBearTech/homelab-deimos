@@ -21,9 +21,11 @@ live. The reasoning behind these requirements is in the [assurance case](assuran
 5. **Releases are verifiable.** Release files are listed in a `SHA256SUMS` signed keylessly by the release
    workflow, with SLSA provenance and an SBOM of the pinned images ([verifying-releases.md](verifying-releases.md)).
 6. **Backups don't leak and can't reach the media.** `scripts/backup.sh` writes archives readable only by the
-   user who ran it (the scheduled copy off the host keeps those modes), and `scripts/restore.sh` writes only the mounts the backup's checksummed `MANIFEST` lists and
-   the service still has, never the media library or any other path a service excludes with its
-   `org.honeybeartech.deimos.backup.skip` label.
+   user who ran it (the scheduled copy off the host keeps those modes). With `BACKUP_AGE_RECIPIENT` set, that copy
+   is encrypted to an age key whose private half isn't on this host, so the backup server holds nothing it can read.
+   `scripts/restore.sh` writes only the mounts the backup's checksummed `MANIFEST` lists and the service still has,
+   never the media library or any other path a service excludes with its `org.honeybeartech.deimos.backup.skip`
+   label.
 
 ## Policy
 
@@ -87,9 +89,12 @@ offer nothing else. Without capabilities that root can only reach what it owns (
   key (root on the hub's host and on every agent's, and the password manager it is kept in) is trusted too. It is an
   allowed exception (label in `compose.yaml`); keep its port on the LAN.
 - **Backups off the host from the host itself.** The scheduled backup can delete old backups on the backup
-  server, so whoever controls this host can delete or overwrite them too. Snapshots or a versioned copy on the
-  backup server, outside this host's reach, are what protect them; a recycle bin may not see deletions made over
-  rsync (Synology's doesn't).
+  server, so whoever controls this host can delete or overwrite them too (though not read them, when they're
+  encrypted). Snapshots or a versioned copy on the backup server, outside this host's reach, are what protect them;
+  a recycle bin may not see deletions made over rsync (Synology's doesn't). The backups in `BACKUP_DIR` on the host
+  aren't encrypted.
+- **The age private key.** With `BACKUP_AGE_RECIPIENT` set, whoever has it can read every backup copied off the
+  host; whoever loses it can read none. Keeping it is the operator's job.
 - **The GPU driver and runtime.** The NVIDIA driver and Container Toolkit on the host are trusted and kept up to
   date by the operator.
 - **The host.** Anyone with root, `docker` group membership or write access to `.env` or the services' data
@@ -107,4 +112,5 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 | The Dozzle agent's key, shared with the Dozzle hub | `CONFIG_ROOT/dozzle/certs/dozzle_key.pem` (root, mode `600`) and a password manager | same, and the stack's backups |
 | The backup push monitor's URL | `backup.env` (gitignored, mode `600`) | same |
 | The key for the backup server | the backup user's `~/.ssh` on the host | same |
-| Backups of the data | off the host, mode `600` | anywhere public |
+| The age private key for the backups (`BACKUP_AGE_RECIPIENT`) | off this host, with the operator's recovery secrets | this host, the backup server, anywhere public |
+| Backups of the data | on the host and off it mode `600`; off the host encrypted with age when `BACKUP_AGE_RECIPIENT` is set | anywhere public |

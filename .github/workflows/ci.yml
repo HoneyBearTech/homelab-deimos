@@ -120,9 +120,10 @@ jobs:
           if [ ! -f compose.yaml ]; then
             exit 0
           fi
+          # Logged out at the end either way: a runner image can come with a Docker Hub entry of its own (x64 does).
+          trap 'docker logout' EXIT
           if [ -n "$DOCKERHUB_TOKEN" ]; then
             printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
-            trap 'docker logout' EXIT
           else
             echo "::notice::No Docker Hub token; pulling anonymously"
           fi
@@ -135,6 +136,10 @@ jobs:
             echo "::error::still logged in to Docker Hub"
             exit 1
           fi
+
+      # The scheduled backup's encrypted copy off the host (BACKUP_AGE_RECIPIENT) is tested with age.
+      - name: Install age
+        run: sudo apt-get update --quiet && sudo apt-get install --yes --no-install-recommends age
 
       # Every service from compose.yaml, started with throwaway directories and volumes, must report healthy
       # within five minutes, and survive a backup and restore (scripts/smoke-test.sh). Logs of every service are

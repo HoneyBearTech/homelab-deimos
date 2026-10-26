@@ -86,8 +86,21 @@ All notable changes to homelab-deimos are documented here. The format follows
   14 October 2026), so they deploy to the maintainer's server unattended; the nightly backup is the way back from a
   one-way data migration. Every Tdarr update, and any update Dependabot can't classify, is still merged by hand.
 
+### Added
+
+- An encrypted copy off the host for the scheduled backup: with `BACKUP_AGE_RECIPIENT` (an age public key) in
+  `backup.env`, only `backup.tar.age` and its `SHA256SUMS` leave the host, and only the private key's holder can
+  read them (`age -d -i <key> backup.tar.age | tar -x`). Needs `age` on the host; optional, and without it the
+  backup is copied as before. The smoke test checks that only the archive leaves, that the key opens it into the
+  backup `scripts/restore.sh` reads, and that another key doesn't.
+
 ### Fixed
 
+- The smoke test's restore into a removed config folder also runs for a stack built from this one where only one app
+  keeps its data in `CONFIG_ROOT/<app>/config`; it used to fail with "no app keeps its data in
+  CONFIG_ROOT/<app>/config". Deimos has three such apps (Tdarr, Spoolman and the AMS app) and isn't affected.
+- CI's smoke test always logs out of Docker Hub after pulling the images, also when it pulled anonymously on a runner
+  image that comes with a Docker Hub entry of its own.
 - **The Dozzle agent keeps the notification settings the Dozzle hub sends it in memory** (`/data` is a tmpfs now).
   It saves them to `/data`, which was part of its read-only root filesystem, so each time the hub started the agent
   logged "failed to save config: open ./data/notifications.yml: read-only file system" and "Could not remove cloud.yml
