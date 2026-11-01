@@ -11,6 +11,7 @@ APPS = {
     "tdarr": ("tdarr", {"server": "/app/server", "config": "/app/configs", "logs": "/app/logs", "transcode": "/temp"}),
     "spoolman": ("spoolman", {"config": "/home/app/.local/share/spoolman"}),
     "ams": ("haspelsync", {"config": "/app/printers", "logs": "/app/logs"}),
+    "mealie": ("mealie", {"config": "/app/data"}),
 }
 NOT_APP_DATA = ("${MEDIA_PATH:?set MEDIA_PATH in .env}:/media", "/var/run/docker.sock:/var/run/docker.sock:ro")
 

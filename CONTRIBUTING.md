@@ -12,7 +12,7 @@ taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
   Say which version you run, which service is involved and what you ran, and leave out passwords, tokens, hostnames,
   addresses and paths. For anything bigger than a small fix, please open an issue first so we can agree on
   the approach. The [roadmap](docs/roadmap.md) says what's planned and what's out of scope.
-- A bug in a service itself (Tdarr, Spoolman, the AMS app) belongs with that project.
+- A bug in a service itself (Tdarr, Spoolman, the AMS app, Mealie) belongs with that project.
 - **Do not report security vulnerabilities in a public issue.** Follow [SECURITY.md](SECURITY.md) and use
   GitHub's private vulnerability reporting instead.
 

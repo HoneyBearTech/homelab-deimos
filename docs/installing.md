@@ -60,6 +60,8 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | Spoolman's database | `CONFIG_ROOT/spoolman/config` | `/home/app/.local/share/spoolman` |
 | The AMS app's printer list (with the printers' access codes) and settings | `CONFIG_ROOT/haspelsync/config` | `/app/printers` |
 | The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
+| Mealie's recipe images, its own backups and the keys it signs sign-ins with | `CONFIG_ROOT/mealie/config` | `/app/data` |
+| Mealie's database URL (not backed up; [below](#mealies-database)) | `CONFIG_ROOT/mealie/secrets/database_url` | `/run/secrets/mealie_database_url`, read-only |
 | The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
 
 The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
@@ -81,11 +83,12 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
 
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs}
+     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config
    ```
 
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
-   ([below](#dozzles-certificate)).
+   ([below](#dozzles-certificate)), and Mealie the URL of its database in `CONFIG_ROOT/mealie/secrets`
+   ([below](#mealies-database)).
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -144,6 +147,47 @@ host first, then recreate the hub and each agent with it, one right after the ot
 pair differs from its own. The logs themselves aren't lost: Docker keeps them, and the hub shows them again once
 it reaches the agent.
 
+## Mealie's database
+
+Mealie keeps its recipes, meal plans, shopping lists and accounts in PostgreSQL on a database server, not in this
+stack; its folder here holds only the recipe images, its own backups and the keys it signs sign-ins with. It reaches
+the server with one URL, login and password included, which it reads from a file (a Docker secret, mounted read-only
+at `/run/secrets/mealie_database_url`), so the password is never in `.env` or in the container's settings. Mealie
+doesn't start while the file is missing.
+
+1. **On the database server**, make a login that owns one new database, with a long random password (for
+   example `openssl rand -hex 24`), as its administrator in `psql`:
+
+   ```sql
+   CREATE ROLE mealie LOGIN PASSWORD '<the password>';
+   CREATE DATABASE mealie OWNER mealie;
+   ```
+
+   and let the login connect from this host (`pg_hba.conf`, with `scram-sha-256`).
+2. **On this host**, write the URL into the file, as the user who runs the stack (so it belongs to `PUID:PGID`, whom
+   Mealie runs as), with mode `600`. `read -s` keeps the password out of the shell's history:
+
+   ```sh
+   . ./.env
+   install -d -m 700 "$CONFIG_ROOT/mealie/secrets"
+   (umask 077 && read -rsp 'Password: ' pw && echo &&
+     printf 'postgresql://mealie:%s@db.example.com:5432/mealie?sslmode=require\n' "$pw" \
+       >"$CONFIG_ROOT/mealie/secrets/database_url")
+   ```
+
+   Use the database server's name and the login and database from step 1. A password with any of `@:/?#%` in it
+   must be percent-encoded in the URL (a hexadecimal one never needs it). `sslmode=require`
+   encrypts the connection; `verify-full` would also check the server's certificate, which needs its CA certificate
+   inside the container.
+3. **Start it**: `docker compose up -d mealie`. On its first start Mealie makes its tables, and its first account:
+   open `MEALIE_PUBLIC_URL`, sign in as `changeme@example.com` with the password `MyPassword`, and change both at
+   once (Mealie makes that account only while the database has no users).
+
+The file is never in the stack's backups (`scripts/backup.sh` copies read-write mounts only), and the database is
+backed up on its server, not here. To give the login a new password (`ALTER ROLE mealie PASSWORD '…'` on the
+server), write the file again as in step 2 and `docker compose restart mealie`; on a rebuilt host, write it again
+the same way.
+
 ## Scheduled backups
 
 `scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync
@@ -190,7 +234,7 @@ protect it with snapshots where it is stored.
    it empty to copy the backups as they are) and, optionally, the retention and `BACKUP_PING_URL`. For the ping, add
    a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
 5. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is copied (compression
-   runs after it starts again): Spoolman and the AMS app for seconds, Tdarr for as long as its database takes to
+   runs after it starts again): Spoolman, the AMS app and Mealie for seconds, Tdarr for as long as its database takes to
    copy, and a transcode it was running starts over. With `BACKUP_AGE_RECIPIENT`, the copy off the host is one
    folder per backup holding only `backup.tar.age` and its `SHA256SUMS`; the backup itself stays readable here, in
    `BACKUP_DIR`.
@@ -221,7 +265,10 @@ has none; [rebuilding.md](rebuilding.md#an-encrypted-backup)).
   their ports beyond the LAN; Docker-published ports bypass host firewalls such as `ufw`, so restrict them at the
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
 - **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
-  Network access.
+  Network access. Mealie always has one: change its first account's e-mail and password at once
+  ([Mealie's database](#mealies-database), step 3).
+- **Mealie fetches whatever address it is given** to import a recipe, including addresses on the LAN, and anyone with
+  an account can give it one. New accounts need an administrator's invitation; invite only people you trust.
 - **HaspelSync answers only the host names it knows.** Under its IP address it works as is; reached through a
   reverse proxy or under a DNS name, it refuses every request (`403`) until that name is added under Settings →
   Allowed host names. Its API answers only its own web UI and callers with an API key.

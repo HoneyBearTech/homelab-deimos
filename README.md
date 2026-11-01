@@ -6,7 +6,7 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15290/badge)](https://www.bestpractices.dev/projects/15290)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/15290/baseline)](https://www.bestpractices.dev/projects/15290)
 
-Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an NVIDIA GPU: Tdarr, Spoolman and HaspelSync. Version-pinned, kept as code for easy upgrades and rebuilds.
+Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an NVIDIA GPU: Tdarr, Spoolman, HaspelSync and Mealie. Version-pinned, kept as code for easy upgrades and rebuilds.
 
 > [!WARNING]
 > Tdarr rewrites the files in your media library: a broken upgrade or a misconfigured flow can damage or delete
@@ -37,6 +37,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 - **Spoolman**: an inventory of 3D-printer filament spools, with a web UI and an API
 - **The AMS app** ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)): keeps Spoolman in step with what the
   Bambu Lab printers' automatic material systems hold and what each print uses
+- **Mealie**: recipes, meal plans and shopping lists, with a web UI and an API; its database is PostgreSQL on a
+  database server of your own
 - **autoheal**: restarts any of them whose health check fails, through a socket proxy that only lets it list,
   inspect, restart and stop containers
 - **A Dozzle agent**: serves the containers' logs to the homelab's Dozzle on another host, which shows every
@@ -54,11 +56,14 @@ a commit in `main`.
 
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
-cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and SPOOLMAN_PUBLIC_URL
+cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and the two *_PUBLIC_URLs
 . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-  "$CONFIG_ROOT"/haspelsync/{config,logs}
+  "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config
 docker compose up -d --wait
 ```
+
+The Dozzle agent needs its certificate and key first ([installing](docs/installing.md#dozzles-certificate)), and
+Mealie the URL of its database ([installing](docs/installing.md#mealies-database)).
 
 For Tdarr to use the GPU, the host needs the NVIDIA driver, the NVIDIA Container Toolkit 1.18+ and Docker Engine
 29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs
@@ -90,12 +95,14 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | --- | --- | --- |
 | `TZ` | `Etc/UTC` | Time zone |
 | `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
-| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library |
+| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman, the AMS app and Mealie run as; Tdarr's must be able to read and write the media library |
 | `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
 | `CONFIG_ROOT` | `/srv/config` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |
 | `SPOOLMAN_PUBLIC_URL` | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at (the AMS app's links) |
+| `MEALIE_PUBLIC_URL` | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its links in notifications and shared recipes) |
 
-autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
+Mealie's database URL, with its password, is a file under `CONFIG_ROOT/mealie/secrets`, never a setting
+([installing](docs/installing.md#mealies-database)). autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
 [`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored). The scheduled backup's settings, including
 its push monitor URL, go in `backup.env` (template [`backup.env.example`](backup.env.example), mode `600`,
 gitignored); both files are optional.
@@ -104,9 +111,9 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 
 ## Running it securely
 
-- Keep the web UIs (Tdarr's, Spoolman's, the AMS app's) on your LAN. Most of them have no login of their own,
-  so anyone who can reach them can use them; put them behind a reverse proxy with access lists. Docker-published
-  ports bypass host firewalls such as `ufw`.
+- Keep the web UIs (Tdarr's, Spoolman's, the AMS app's, Mealie's) on your LAN. Most of them have no login of their
+  own, so anyone who can reach them can use them; put them behind a reverse proxy with access lists.
+  Docker-published ports bypass host firewalls such as `ufw`.
 - Tdarr can rewrite or delete anything in the media library: keep snapshots of it, read Tdarr's release notes
   before every upgrade, and test a new flow on a small library first.
 - The GPU is given to Tdarr as a device reservation through the NVIDIA runtime, never by running it privileged.
@@ -115,8 +122,8 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - The Dozzle agent reads logs through the Docker socket: it accepts only a Dozzle hub with the certificate and key
   you made for them, never the pair built into every Dozzle image
   ([docs/installing.md](docs/installing.md#dozzles-certificate)), and its port (7007) stays on the LAN.
-- Secrets (logins, API keys, printer credentials) live in each service's data, and the webhook and push monitor
-  URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
+- Secrets (logins, API keys, printer credentials) live in each service's data, Mealie's database URL in its secret
+  file, and the webhook and push monitor URLs in `autoheal.env` and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
   private and off the host, and encrypt the copy that leaves it (`BACKUP_AGE_RECIPIENT`).
 - Don't run an auto-updater such as Watchtower on these containers; upgrade from this repository instead (a
   release, or `main`).

@@ -7,7 +7,7 @@ body:
       value: >-
         Thanks for reporting. **Security problems go to the private form instead** (see SECURITY.md).
         Leave out passwords, tokens, hostnames, domains, IP addresses and paths: replace them with placeholders.
-        A bug in Tdarr, Spoolman or the AMS app itself belongs with that project.
+        A bug in Tdarr, Spoolman, the AMS app or Mealie itself belongs with that project.
   - type: input
     id: version
     attributes:
