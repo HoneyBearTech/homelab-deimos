@@ -21,8 +21,8 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    ```
 
    In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`,
-   `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`) and
-   `SPOOLMAN_PUBLIC_URL`. With an NVIDIA GPU, uncomment `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting
+   `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`),
+   `SPOOLMAN_PUBLIC_URL` and `MEALIE_PUBLIC_URL`. With an NVIDIA GPU, uncomment `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting
    is described in [interfaces.md](interfaces.md#settings).
 
 3. **Create the apps' folders under `CONFIG_ROOT`** as your user, so Docker doesn't create them owned by root
@@ -30,12 +30,14 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
 
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs}
+     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config
    ```
 
    The Dozzle agent also needs the certificate and key it shares with your Dozzle hub, in
    `CONFIG_ROOT/dozzle/certs` and owned by root; it doesn't start without them
-   ([installing.md](installing.md#dozzles-certificate) has the commands).
+   ([installing.md](installing.md#dozzles-certificate) has the commands). Mealie needs a PostgreSQL database of its
+   own on a database server, and its URL in `CONFIG_ROOT/mealie/secrets/database_url`; it doesn't start without it
+   either ([installing.md](installing.md#mealies-database)).
 
 4. **Check the GPU** is visible to containers (skip this without one):
 
@@ -54,6 +56,7 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
 6. **Finish each service's setup in its web UI** (ports in [interfaces.md](interfaces.md#services-and-ports)).
    In Tdarr, add a library pointing at the media mount and test your flow on a small folder first: Tdarr
    replaces the files it processes. In the AMS app, add your printers (serial number, access code, address);
-   it finds Spoolman on its own.
+   it finds Spoolman on its own. In Mealie, sign in with its first account (`changeme@example.com`, `MyPassword`)
+   and change its e-mail and password at once.
 
 To upgrade later, follow [upgrading.md](upgrading.md); it starts with a backup.

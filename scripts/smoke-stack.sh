@@ -5,6 +5,19 @@
 # (work, project, root, busybox, compose, fail). Written for bash 3.2 and later (macOS ships 3.2).
 # shellcheck shell=bash disable=SC2154 # work, project and busybox come from smoke-test.sh
 
+smoke_prepare() {
+  dozzle_prepare
+  mealie_prepare
+}
+
+smoke_check() {
+  dozzle_check
+  mealie_check
+}
+
+# The throwaway CONFIG_ROOT.
+smoke_config_root() { sed -n 's/^CONFIG_ROOT=//p' "$work/env"; }
+
 # The Dozzle agent: a throwaway certificate and key, made with `dozzle generate-certs` as on the host and owned by root
 # as there; then that the agent loaded them, accepts a hub presenting them and refuses one presenting the pair built
 # into every Dozzle image, and that it keeps the notification settings such a hub sends it as it starts.
@@ -14,9 +27,9 @@ dozzle_service=dozzle-agent
 dozzle_image() { compose config --images "$dozzle_service"; }
 
 # The folder the agent's secrets come from: CONFIG_ROOT/dozzle/certs.
-dozzle_certs() { echo "$(sed -n 's/^CONFIG_ROOT=//p' "$work/env")/dozzle/certs"; }
+dozzle_certs() { echo "$(smoke_config_root)/dozzle/certs"; }
 
-smoke_prepare() {
+dozzle_prepare() {
   local certs
   certs=$(dozzle_certs)
   # CONFIG_ROOT belongs to PUID, who may not be the caller: the folder is made as root, inside CONFIG_ROOT (a missing
@@ -38,7 +51,7 @@ dozzle_agent_test() {
 # The agent's log lines about notification settings from a hub, one per line.
 dozzle_settings_log() { compose logs --no-color "$dozzle_service" | grep "notification config" || true; }
 
-smoke_check() {
+dozzle_check() {
   local logs out before
   logs=$(compose logs --no-color "$dozzle_service")
   [[ $logs == *"Loaded custom dozzle certificate and key"* ]] ||
@@ -70,4 +83,80 @@ smoke_check() {
     fail "the Dozzle agent tried to write to its read-only root filesystem"
   echo "Dozzle agent: accepts a hub with its own certificate and key and keeps its notification settings, refuses" \
     "one with the built-in pair"
+}
+
+# Mealie: a throwaway PostgreSQL in the stack stands in for the database server, with TLS (the image's own
+# self-signed certificate) and a pg_hba.conf that refuses every connection over the network without it, and the secret
+# with its URL is written as the installing docs have the user write it; then that Mealie keeps its data in that
+# database, with no SQLite file of its own, and never writes to its read-only root filesystem.
+mealie_service=mealie
+mealie_db=mealie-test-db
+
+# The PostgreSQL the database server runs, pinned like busybox in lib.sh (bumped by hand, docs/dependencies.md).
+mealie_db_image=postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+
+mealie_prepare() {
+  local password
+  password=$(od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+  # The secret belongs to PUID:PGID with mode 600, as on the host, so it is written as root, in a throwaway container.
+  docker run --rm --network none -v "$(smoke_config_root):/config-root" "$busybox" sh -c '
+    mkdir -p /config-root/mealie/secrets &&
+    printf "%s\n" "$1" >/config-root/mealie/secrets/database_url &&
+    chown -R "$2:$3" /config-root/mealie/secrets &&
+    chmod 700 /config-root/mealie/secrets && chmod 600 /config-root/mealie/secrets/database_url' secret \
+    "postgresql://mealie:$password@$mealie_db:5432/mealie?sslmode=require" \
+    "$(sed -n 's/^PUID=//p' "$work/env")" "$(sed -n 's/^PGID=//p' "$work/env")" </dev/null
+  # The socket for the health check and psql; over the network, Mealie's login with TLS only.
+  mkdir -p "$work/mealie-test-db"
+  printf '%s\n' 'local all all trust' 'hostssl mealie mealie all scram-sha-256' 'host all all all reject' \
+    >"$work/mealie-test-db/pg_hba.conf"
+  chmod 644 "$work/mealie-test-db/pg_hba.conf"
+  # Its data in memory: it holds nothing a backup should keep, and nothing to restore.
+  cat >"$work/override-stack.yaml" <<YAML
+services:
+  $mealie_db:
+    image: $mealie_db_image
+    user: postgres
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    tmpfs: [/var/lib/postgresql, /var/run/postgresql, /tmp]
+    environment:
+      POSTGRES_USER: mealie
+      POSTGRES_DB: mealie
+      POSTGRES_PASSWORD: $password
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+      - -c
+      - ssl_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+      - -c
+      - hba_file=/etc/smoke/pg_hba.conf
+    volumes:
+      - $work/mealie-test-db:/etc/smoke:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "/var/run/postgresql", "-U", "mealie", "-d", "mealie"]
+      interval: 2s
+      retries: 30
+  $mealie_service:
+    depends_on:
+      $mealie_db:
+        condition: service_healthy
+YAML
+}
+
+mealie_check() {
+  local tables
+  # Its tables are there only if it connected, which its database allows only with TLS.
+  tables=$(compose exec -T "$mealie_db" psql -U mealie -d mealie -Atc \
+    "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
+  [ "${tables:-0}" -gt 0 ] || fail "Mealie made no tables in its database"
+  docker run --rm --network none --volumes-from "$(compose ps --quiet "$mealie_service"):ro" "$busybox" \
+    test ! -e /app/data/mealie.db </dev/null || fail "Mealie made a SQLite database of its own"
+  [[ $(compose logs --no-color "$mealie_service") != *"Read-only file system"* ]] ||
+    fail "Mealie tried to write to its read-only root filesystem"
+  echo "Mealie: keeps its data in PostgreSQL ($tables tables), over TLS, with no SQLite file and a read-only root"
 }

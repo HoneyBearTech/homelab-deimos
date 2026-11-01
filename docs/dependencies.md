@@ -29,6 +29,7 @@ its release notes.
 | The stack's images | [`compose.yaml`](../compose.yaml) | version tag and digest | `docker compose pull` |
 | Check and test tools (pytest, coverage, ruff, yamllint, shellcheck) | [`requirements-dev.in`](../requirements-dev.in) → [`requirements-dev.txt`](../requirements-dev.txt) | exact version and SHA-256 hashes (`pip-compile --generate-hashes`) | `pip install --require-hashes --no-deps` |
 | Helper image for backups and the smoke test (busybox) | [`scripts/lib.sh`](../scripts/lib.sh) | version tag and digest | Docker |
+| The smoke test's stand-in for Mealie's database server (PostgreSQL, the version the homelab's database server runs) | [`scripts/smoke-stack.sh`](../scripts/smoke-stack.sh) | version tag and digest | Docker |
 | Linters and scanners used only by CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest | Docker |
 | GitHub Actions | [`.github/workflows/`](../.github/workflows/) | full commit SHA (version in a comment) | GitHub Actions |
 
@@ -40,8 +41,10 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 - **Dependabot** ([`.github/dependabot.yml`](../.github/dependabot.yml)) checks weekly for new image
   versions in the Compose file, new tool versions and new Action versions, and opens a pull request for each.
   Dependabot alerts and security updates are on.
-- The CI-only images in `run:` steps and the scripts' busybox image aren't seen by Dependabot; they're bumped
-  by hand at least every quarter.
+- The CI-only images in `run:` steps and the scripts' busybox and PostgreSQL images aren't seen by Dependabot;
+  they're bumped by hand at least every quarter (PostgreSQL along with the database server's).
+- **Mealie's updates migrate a database outside this stack**, on its database server: keep nightly backups there,
+  since a merge of one, automatic or not, relies on them.
 - **Patch and minor updates merge automatically** (and majors, below) once every required check has passed (CI with the Compose
   policy check and the smoke test, CodeQL, dependency review), **except Tdarr's**: any Tdarr update is merged by
   hand, after reading its release notes, because a faulty Tdarr version can damage the media library.

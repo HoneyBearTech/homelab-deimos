@@ -14,7 +14,9 @@ live. The reasoning behind these requirements is in the [assurance case](assuran
    mounts the Docker socket (which is root on the host), unless the exception is written into the service as a reasoned label and reviewed. The GPU is
    granted as a device reservation through the NVIDIA runtime, not by privilege.
 3. **No secrets in the repository.** The services keep their logins, API keys and any printer credentials in
-   their own data, outside the repository. `.env` holds settings only. Secret scanning with push protection
+   their own data, outside the repository, and the secrets they read from files (the Dozzle agent's key, Mealie's
+   database URL) are Docker secrets, files under `CONFIG_ROOT` that are never committed or backed up. `.env` holds
+   settings only. Secret scanning with push protection
    and a gitleaks scan of the whole history in CI back this up.
 4. **No host details in the repository.** It is public: no hostnames, IP addresses, domains, share names or host
    paths are committed. Examples use placeholders.
@@ -61,6 +63,7 @@ transcoding with these settings is checked on the host, not in CI.
 | tdarr | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of its own directories (never `/media`), records that in a directory that then belongs to its user, starts the server and node as that user, and stops them on shutdown. The server and node run as that user with no capabilities, so their access to the media library is unchanged. Writable root: s6 runs its init from `/run`, and Tdarr updates its plugins and its own files in the image |
 | spoolman | `SETUID`, `SETGID` | yes (`/tmp` in memory) | Its entrypoint starts as root and switches to its user. `PUID`/`PGID` must stay 1000 (its user's ids): for others it rewrites `/etc/passwd` |
 | ams | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID` rather than its image's root, and writes only its printers and logs directories, which belong to that user |
+| mealie | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID`; its image's start as root (changing its user's ids, taking ownership of `/app`, switching user) is skipped when it already runs as `PUID`. Writes only its data directory, which belongs to that user, and reads its database URL from a secret file that belongs to that user too (mode `600`). Limited to 1000 MB of memory |
 | dozzle-agent | none | yes (`/tmp`, `/data` in memory) | Only reads the socket and its certificate and key, all owned by root; writes its address file to `/tmp` and the notification settings the Dozzle hub sends it to `/data`. The hub keeps those settings and sends them again each time it starts (an agent restarted while the hub runs has none until then) |
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
@@ -71,14 +74,20 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 
 ## What it doesn't protect
 
-- **The services themselves.** A vulnerability in Tdarr, Spoolman or the AMS app is that project's to fix;
+- **The services themselves.** A vulnerability in Tdarr, Spoolman, the AMS app or Mealie is that project's to fix;
   homelab-deimos ships the fixed version once it's released ([dependencies.md](dependencies.md)).
 - **The media library.** Tdarr rewrites files in it by design. A bad flow or a faulty Tdarr version can damage
   or delete them; only snapshots on the storage that holds the library protect against that.
 - **Access to the web UIs.** Most of these services have no login. HaspelSync (the AMS app) asks for a password
   only once one is set under Settings → Network access; set one, since without it anyone on the LAN can change the
-  printer list and the Spoolman endpoint. Keeping them on the LAN, behind a reverse
+  printer list and the Spoolman endpoint. Mealie always asks for a login, but its first account has a well-known
+  e-mail and password until they are changed. Keeping them on the LAN, behind a reverse
   proxy's access lists, is the operator's job ([installing.md](installing.md#running-it-securely)).
+- **What Mealie fetches.** To import a recipe, Mealie fetches the address a signed-in user gives it, including
+  addresses on the LAN; its accounts are as trusted as that. New accounts need an administrator's invitation.
+- **Mealie's database.** Its recipes and accounts are on the database server, which protects and backs them up;
+  this stack holds only the URL with the login's password (a secret file) and connects over TLS
+  (`sslmode=require`, which doesn't check the server's certificate).
 - **The Docker API behind the proxy.** socket-proxy mounts the Docker socket (an allowed exception, labelled in
   `compose.yaml`) and lets autoheal only list, inspect, restart and stop containers; a flaw in the proxy would
   expose more. It has no published port and sits on an internal network that only autoheal joins.

@@ -8,6 +8,12 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **Give Mealie its database, and set `MEALIE_PUBLIC_URL` in `.env`, before deploying this**
+  ([docs/installing.md](docs/installing.md#mealies-database)): a PostgreSQL login that owns one new database on your
+  database server, its URL in `CONFIG_ROOT/mealie/secrets/database_url` (owned by `PUID:PGID`, mode `600`), and
+  `mkdir -p "$CONFIG_ROOT/mealie/config"` as your user. Without `MEALIE_PUBLIC_URL` a deploy stops at
+  `docker compose config` and changes nothing; without the file, Mealie's container can't be created. Then sign in
+  with Mealie's first account (`changeme@example.com`, `MyPassword`) and change both at once.
 - **Put the Dozzle certificate and key in `CONFIG_ROOT/dozzle/certs` before deploying this** (owned by root; the
   same pair on the Dozzle hub, which needs its own update: [docs/installing.md](docs/installing.md#dozzles-certificate)).
   Without them the Dozzle agent doesn't start. Once the agent has its pair, the hub reaches it only after it has
@@ -44,7 +50,7 @@ All notable changes to homelab-deimos are documented here. The format follows
 - The smoke test runs a stack's own steps from `scripts/smoke-stack.sh` when that exists (`smoke_prepare` before the
   services start, `smoke_check` once they are healthy and again after the restore), gives a `*_SUBNET` setting a free
   address range, and leaves a service with Docker secrets out of the restore's "recreated with older settings" check.
-  None of these is in use here; they keep the stacks' tooling the same.
+  The Dozzle agent's and Mealie's steps use them; the rest keep the stacks' tooling the same.
 - Docs: a GPU host needs **Docker Engine 29.2 or later** and NVIDIA Container Toolkit 1.18 or later
   ([docs/installing.md](docs/installing.md#the-gpu-and-docker-292)). From 29.2 Docker serves `compose.gpu.yaml`'s
   `driver: nvidia` reservation through CDI (the toolkit's `nvidia-cdi-hook`, with `nvidia-cdi-refresh` keeping the
@@ -88,6 +94,16 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- **Mealie** 3.30.0 (recipes, meal plans and shopping lists), on port 9925, with its database in PostgreSQL on a
+  database server outside the stack: the connection URL, with the login's password, is a Docker secret file under
+  `CONFIG_ROOT/mealie/secrets`, never a setting, and is neither committed nor backed up. It runs as `PUID:PGID` with
+  no capabilities and a read-only root (`/tmp` in memory), takes new accounts only by invitation
+  (`ALLOW_SIGNUP: "false"`), is limited to 1000 MB of memory, and keeps its recipe images, its own backups and its
+  signing keys in `CONFIG_ROOT/mealie/config`, which the backups cover. New required setting `MEALIE_PUBLIC_URL`. Its
+  updates merge automatically like the other services' (not Tdarr's) and migrate its database on the database
+  server, whose own backups are the way back. The smoke test gives it a throwaway PostgreSQL that refuses connections
+  without TLS, and checks that its tables are there, that it made no SQLite file and that it never wrote to its
+  read-only root.
 - An encrypted copy off the host for the scheduled backup: with `BACKUP_AGE_RECIPIENT` (an age public key) in
   `backup.env`, only `backup.tar.age` and its `SHA256SUMS` leave the host, and only the private key's holder can
   read them (`age -d -i <key> backup.tar.age | tar -x`). Needs `age` on the host; optional, and without it the

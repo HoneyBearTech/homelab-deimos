@@ -16,8 +16,10 @@ automatically instead, where the merge is the upgrade ([Following `main`](#follo
 
 ## Backing up
 
-The state worth keeping is each service's data: Tdarr's database and settings, Spoolman's database and the AMS
-app's data. `scripts/backup.sh` stops one service at a time, copies its mounts while it is stopped so its
+The state worth keeping is each service's data: Tdarr's database and settings, Spoolman's database, the AMS
+app's data and Mealie's recipe images. Mealie's database is on its database server: back it up there before an
+update to Mealie (it migrates that database forward when it starts a new version), and restore it there to roll
+one back. `scripts/backup.sh` stops one service at a time, copies its mounts while it is stopped so its
 database is consistent, and starts it again if it was running before compressing the copies; services with nothing
 to archive keep running. It also copies `.env` and any `<service>.env`:
 

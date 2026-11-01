@@ -14,13 +14,15 @@ setting marked required stops `docker compose` with an error naming it when it's
 | --- | --- | --- | --- |
 | `COMPOSE_FILE` | no | `compose.yaml:compose.gpu.yaml` | Set on a host with an NVIDIA GPU, so Tdarr gets it ([GPU](#gpu)). Leave unset without one. |
 | `TZ` | yes | `Etc/UTC` | Time zone (tz database name) for logs and schedules. |
-| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman and the AMS app run as; Tdarr's must be able to read and write the media library. |
+| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman, the AMS app and Mealie run as; Tdarr's must be able to read and write the media library. |
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
 | `CONFIG_ROOT` | yes | `/srv/config` | Host folder holding every app's data, one folder per app: `CONFIG_ROOT/<app>/config` and any other folder beside it ([where data lives](installing.md#where-data-lives)). Never inside `/var/lib/docker/volumes`. |
 | `SPOOLMAN_PUBLIC_URL` | yes | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at; the AMS app's links point there. |
+| `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there. |
 
-No secret is a setting. A secret a service can only take from its environment gets its own gitignored
-`<service>.env` (mode `600`) with a committed `<service>.env.example`:
+No secret is a setting. A service that reads a secret from a file gets it as a Docker secret, a file under
+`CONFIG_ROOT` ([volumes and mounts](#volumes-and-mounts)). A secret a service can only take from its environment gets
+its own gitignored `<service>.env` (mode `600`) with a committed `<service>.env.example`:
 
 | File | Setting | Meaning |
 | --- | --- | --- |
@@ -51,6 +53,11 @@ tag. Since HaspelSync 1.3 these only seed its settings: once a setting is saved 
 `/app/printers` owns it and the variable is ignored. Change them in `compose.yaml`, in a pull request, or in the web
 UI, whose settings the backups cover.
 
+Mealie uses PostgreSQL (`DB_ENGINE: postgres`) at the URL in its secret (`POSTGRES_URL_OVERRIDE_FILE`), never a
+SQLite file of its own, and takes new accounts only by an administrator's invitation (`ALLOW_SIGNUP: "false"`). It is
+limited to 1000 MB of memory, as in Mealie's own example. Its other settings (e-mail, single sign-on, an AI provider)
+are Mealie's defaults until a pull request sets them ([Mealie's settings](https://mealie.io/documentation/getting-started/installation/backend-config/)).
+
 ## Services and ports
 
 | Service | Image | Host port → container | What |
@@ -59,13 +66,14 @@ UI, whose settings the backups cover.
 | | | 8266 → 8266 | Server port for Tdarr nodes on other machines |
 | Spoolman | `ghcr.io/donkie/spoolman` | 7912 → 8000 | Web UI and REST API (LAN only) |
 | AMS app (HaspelSync) | `ghcr.io/rdiger-36/haspelsync` | 4000 → 4000 | Web UI (LAN only; set a password under Settings → Network access) |
+| Mealie | `ghcr.io/mealie-recipes/mealie` | 9925 → 9000 | Web UI and REST API (LAN only; its own login) |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 | Dozzle agent | `amir20/dozzle` | 7007 → 7007 | Agent for the homelab's Dozzle on another host (LAN only); no web UI of its own |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
-`/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, autoheal's process, the proxy's `/_ping` and
-the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to
+`/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, Mealie's own `/app/healthcheck.sh`
+(`/api/app/about`), autoheal's process, the proxy's `/_ping` and the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to
 stop before restarting it; a service gets 10 minutes after it starts before failed checks count.
 
 ## GPU
@@ -89,6 +97,8 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/home/app/.local/share/spoolman` | `CONFIG_ROOT/spoolman/config` | Spoolman: database |
 | `/app/printers` | `CONFIG_ROOT/haspelsync/config` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
+| `/app/data` | `CONFIG_ROOT/mealie/config` | Mealie: recipe images, its own backups and the keys it signs sign-ins with (its database is on the database server) |
+| `/run/secrets/mealie_database_url` (read-only; a Docker secret) | `CONFIG_ROOT/mealie/secrets/database_url`, owned by `PUID:PGID`, mode `600` ([installing.md](installing.md#mealies-database)) | Mealie (`POSTGRES_URL_OVERRIDE_FILE` points at it) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
 | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key` (read-only; Docker secrets) | `CONFIG_ROOT/dozzle/certs/dozzle_cert.pem` and `dozzle_key.pem`, owned by root ([installing.md](installing.md#dozzles-certificate)) | the Dozzle agent (`DOZZLE_CERT`, `DOZZLE_KEY` point at them) |
 
@@ -97,7 +107,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | Label | Meaning |
 | --- | --- |
 | `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
-| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, socket-proxy and the Dozzle agent. |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, socket-proxy and the Dozzle agent. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
 | `org.honeybeartech.deimos.backup.exclude` | Paths inside a service's data mounts (comma-separated, exact container paths, at any depth) that `scripts/backup.sh` leaves out of the mount's archive and `scripts/restore.sh` leaves in place. A path that isn't inside one of the service's data mounts, or contains `..` or a pattern character (`*?[\`), makes both fail before anything stops. Not in use. |
 
@@ -120,7 +130,9 @@ From the host: the image registries (GitHub Container Registry) on `docker compo
 storage. From the services: Tdarr downloads its components and plugin updates from its project's servers;
 Spoolman fetches the SpoolmanDB filament catalogue from `donkie.github.io`; Tdarr nodes on
 other machines connect to port 8266; the AMS app connects to each printer on the LAN over MQTT
-(port 8883) and FTPS (port 990), and to Spoolman inside the stack. The scheduled backup to `BACKUP_REMOTE` (rsync,
+(port 8883) and FTPS (port 990), and to Spoolman inside the stack; Mealie connects to its PostgreSQL server (port
+5432, TLS) and fetches the recipe pages and images it is asked to import, from any website. The scheduled backup to
+`BACKUP_REMOTE` (rsync,
 usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 
 ## Release files

@@ -81,8 +81,9 @@ Copy any `<service>.env` from the backup's `env/` the same way (mode `600`). Edi
 paths differ (but keep the media library's container path; never point `CONFIG_ROOT` into `/var/lib/docker/volumes`),
 create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](installing.md#installing), step 3), and put
 the Dozzle agent's certificate and key back from your password manager, owned by root
-([installing.md](installing.md#dozzles-certificate)): they aren't in the backup, and without them the restore can't
-create the agent's container. Then:
+([installing.md](installing.md#dozzles-certificate)), and write Mealie's database URL again
+([installing.md](installing.md#mealies-database), step 2; with a new password for its login if the old one is lost):
+they aren't in the backup, and without them the restore can't create those containers. Then:
 
 ```sh
 docker compose config --quiet && docker compose pull
@@ -103,14 +104,16 @@ sudo systemctl daemon-reload
 docker exec tdarr nvidia-smi -L       # still lists the GPU; "Failed to initialize NVML" means Docker is older than 29.2
 ```
 
-Then sign in to each service: Tdarr should list its libraries, flows and history and see the GPU, and Spoolman
-its spools.
+Then sign in to each service: Tdarr should list its libraries, flows and history and see the GPU, Spoolman
+its spools, and Mealie its recipes, with their images.
 
 ## What the backup doesn't bring back
 
 - **The media library**: it lives on its own storage, protected there.
 - **The Dozzle agent's certificate and key** (`CONFIG_ROOT/dozzle/certs`): never backed up; they come from your
   password manager (step 4).
+- **Mealie's database and its URL**: the database is on its server, backed up there; the URL
+  (`CONFIG_ROOT/mealie/secrets/database_url`) is written again (step 4).
 - **Host settings**: the static address, the GPU passthrough, the network share's mount, SSH keys, monitoring
   agents.
 - **Other machines' view of this one**: reverse proxy hosts, DNS records, anything that reaches Deimos by

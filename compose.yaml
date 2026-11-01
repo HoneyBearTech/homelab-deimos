@@ -1,9 +1,10 @@
-# The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory) and the AMS app that
-# keeps Spoolman in step with the printers' material systems, plus autoheal (behind a filtering socket proxy) to
-# restart any of them that turns unhealthy, and a Dozzle agent that serves the host's container logs to the
-# homelab's Dozzle on another host. Every setting comes from .env (template: .env.example; reference:
-# docs/interfaces.md); autoheal's optional webhook from autoheal.env (template: autoheal.env.example), and the Dozzle
-# agent's certificate and key from files under CONFIG_ROOT/dozzle/certs (Docker secrets, at the end). Every image is
+# The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory), the AMS app that
+# keeps Spoolman in step with the printers' material systems and Mealie (recipes and meal plans), plus autoheal
+# (behind a filtering socket proxy) to restart any of them that turns unhealthy, and a Dozzle agent that serves the
+# host's container logs to the homelab's Dozzle on another host. Every setting comes from .env (template:
+# .env.example; reference: docs/interfaces.md); autoheal's optional webhook from autoheal.env (template:
+# autoheal.env.example), the Dozzle agent's certificate and key from files under CONFIG_ROOT/dozzle/certs and Mealie's
+# database URL from a file under CONFIG_ROOT/mealie/secrets (Docker secrets, at the end). Every image is
 # pinned as name:tag@sha256:<digest> and publishes linux/amd64; Dependabot proposes updates. scripts/check_compose.py
 # enforces the policy (docs/security.md#policy).
 #
@@ -161,6 +162,49 @@ services:
       <<: *healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:4000/"]
 
+  mealie:
+    <<: *hardened
+    # Recipes, meal plans and shopping lists. Its database is PostgreSQL on another server, never in this stack: the
+    # connection URL, with the login's password, is a Docker secret (the secrets at the end). It migrates that database
+    # forward on the first start of a new version, so a backup there comes first (docs/upgrading.md).
+    image: ghcr.io/mealie-recipes/mealie:v3.30.0@sha256:90f83da6f3ab0a421efc827118a556168573930105f13fa3321768f42163d784
+    container_name: mealie
+    restart: unless-stopped
+    # Its image would start as root, change its own user's ids to PUID/PGID, take ownership of /app and switch to that
+    # user, which takes capabilities. Started as PUID:PGID instead, it skips all of that (PUID must match), so it needs
+    # no capability; it writes only its data folder and /tmp.
+    user: "${PUID:?set PUID in .env}:${PGID:?set PGID in .env}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      PUID: ${PUID:?set PUID in .env}
+      PGID: ${PGID:?set PGID in .env}
+      # The address people open it at; the links in its notifications and shared recipes point there.
+      BASE_URL: ${MEALIE_PUBLIC_URL:?set MEALIE_PUBLIC_URL in .env}
+      # Accounts only by invitation, from an administrator (Mealie's default, kept explicit).
+      ALLOW_SIGNUP: "false"
+      DB_ENGINE: postgres
+      POSTGRES_URL_OVERRIDE_FILE: /run/secrets/mealie_database_url
+    labels:
+      autoheal: "true"
+    ports:
+      - "9925:9000" # web UI and API: keep it on the LAN
+    volumes:
+      # Its recipe images, its own backups and the keys it signs sign-ins with.
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/mealie/config:/app/data
+    secrets:
+      - mealie_database_url
+    # Mealie's own example limits it to 1000 MB.
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    healthcheck:
+      <<: *healthcheck
+      test: ["CMD", "/app/healthcheck.sh"]
+
   # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
   # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version. It accepts only a hub
   # that presents the homelab's own certificate and key (the secrets at the end), never the pair built into every
@@ -281,3 +325,8 @@ secrets:
     file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/dozzle/certs/dozzle_cert.pem
   dozzle_key:
     file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/dozzle/certs/dozzle_key.pem
+  # Mealie's database: postgresql://<login>:<password>@<server>:5432/<database>?sslmode=require, one line, in a file
+  # owned by PUID:PGID with mode 600 (Mealie runs as that user; docs/installing.md#mealies-database). Never
+  # committed, and never in the stack's backups: if it is lost, give the login a new password on the database server.
+  mealie_database_url:
+    file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/mealie/secrets/database_url
