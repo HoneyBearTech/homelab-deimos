@@ -3,8 +3,10 @@
 # (behind a filtering socket proxy) to restart any of them that turns unhealthy, and a Dozzle agent that serves the
 # host's container logs to the homelab's Dozzle on another host. Every setting comes from .env (template:
 # .env.example; reference: docs/interfaces.md); autoheal's optional webhook from autoheal.env (template:
-# autoheal.env.example), the Dozzle agent's certificate and key from files under CONFIG_ROOT/dozzle/certs and Mealie's
-# database URL from a file under CONFIG_ROOT/mealie/secrets (Docker secrets, at the end). Every image is
+# autoheal.env.example), Spoolman's optional database server from spoolman.env (template: spoolman.env.example), the
+# Dozzle agent's certificate and key from files under CONFIG_ROOT/dozzle/certs, Mealie's database URL from a file under
+# CONFIG_ROOT/mealie/secrets and Spoolman's database password from one under CONFIG_ROOT/spoolman/secrets (Docker
+# secrets, at the end). Every image is
 # pinned as name:tag@sha256:<digest> and publishes linux/amd64; Dependabot proposes updates. scripts/check_compose.py
 # enforces the policy (docs/security.md#policy).
 #
@@ -107,12 +109,21 @@ services:
       TZ: ${TZ:?set TZ in .env}
       PUID: ${PUID:?set PUID in .env}
       PGID: ${PGID:?set PGID in .env}
+      # Its database password (the secrets at the end), used only when spoolman.env points it at a database server.
+      SPOOLMAN_DB_PASSWORD_FILE: /run/secrets/spoolman_db_password
+    # Optional: its database on a PostgreSQL server instead of SQLite in its folder (template: spoolman.env.example).
+    # Spoolman refuses an empty database setting, so these can't be settings in .env with empty defaults.
+    env_file:
+      - path: spoolman.env
+        required: false
     labels:
       autoheal: "true"
     ports:
       - "7912:8000" # web UI and REST API: keep it on the LAN
     volumes:
       - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/spoolman/config:/home/app/.local/share/spoolman
+    secrets:
+      - spoolman_db_password
     healthcheck:
       <<: *healthcheck
       # The image has neither curl nor wget; its Python asks the health endpoint.
@@ -330,3 +341,8 @@ secrets:
   # committed, and never in the stack's backups: if it is lost, give the login a new password on the database server.
   mealie_database_url:
     file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/mealie/secrets/database_url
+  # Spoolman's database password, alone in the file with no line break after it (Spoolman reads the whole file as the
+  # password), owned by PUID:PGID with mode 600 (docs/installing.md#spoolmans-database). Empty while Spoolman keeps
+  # its SQLite database. Never committed, and never in the stack's backups.
+  spoolman_db_password:
+    file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/spoolman/secrets/db_password

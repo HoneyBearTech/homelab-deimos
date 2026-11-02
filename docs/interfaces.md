@@ -27,6 +27,7 @@ its own gitignored `<service>.env` (mode `600`) with a committed `<service>.env.
 | File | Setting | Meaning |
 | --- | --- | --- |
 | `autoheal.env` (optional; template [`autoheal.env.example`](../autoheal.env.example)) | `WEBHOOK_URL` | Where autoheal posts a notice for each restart (a Discord channel webhook works as is). A secret: anyone with it can post to the channel. |
+| `spoolman.env` (optional; template [`spoolman.env.example`](../spoolman.env.example)) | `SPOOLMAN_DB_TYPE`, `SPOOLMAN_DB_HOST`, `SPOOLMAN_DB_PORT`, `SPOOLMAN_DB_NAME`, `SPOOLMAN_DB_USERNAME`, `SPOOLMAN_DB_QUERY` | Spoolman's database on a PostgreSQL server (`postgres`, the server, `5432`, the database and its login, `ssl=require` to encrypt the connection). None may be empty; without the file, SQLite in its folder. The password is a file, below ([installing.md](installing.md#spoolmans-database)). |
 
 ### `backup.env`
 
@@ -98,6 +99,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/app/printers` | `CONFIG_ROOT/haspelsync/config` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
 | `/app/data` | `CONFIG_ROOT/mealie/config` | Mealie: recipe images, its own backups and the keys it signs sign-ins with (its database is on the database server) |
+| `/run/secrets/spoolman_db_password` (read-only; a Docker secret) | `CONFIG_ROOT/spoolman/secrets/db_password`, owned by `PUID:PGID`, mode `600`, no line break; empty with SQLite ([installing.md](installing.md#spoolmans-database)) | Spoolman (`SPOOLMAN_DB_PASSWORD_FILE` points at it) |
 | `/run/secrets/mealie_database_url` (read-only; a Docker secret) | `CONFIG_ROOT/mealie/secrets/database_url`, owned by `PUID:PGID`, mode `600` ([installing.md](installing.md#mealies-database)) | Mealie (`POSTGRES_URL_OVERRIDE_FILE` points at it) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
 | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key` (read-only; Docker secrets) | `CONFIG_ROOT/dozzle/certs/dozzle_cert.pem` and `dozzle_key.pem`, owned by root ([installing.md](installing.md#dozzles-certificate)) | the Dozzle agent (`DOZZLE_CERT`, `DOZZLE_KEY` point at them) |

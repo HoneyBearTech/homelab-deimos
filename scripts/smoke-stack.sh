@@ -8,6 +8,17 @@
 smoke_prepare() {
   dozzle_prepare
   mealie_prepare
+  spoolman_prepare
+}
+
+# Spoolman keeps its SQLite database here, so its password secret is the empty file the installing docs have the user
+# write for that case, owned by PUID:PGID with mode 600 as on the host (written as root, in a throwaway container).
+spoolman_prepare() {
+  docker run --rm --network none -v "$(smoke_config_root):/config-root" "$busybox" sh -c '
+    mkdir -p /config-root/spoolman/secrets && : >/config-root/spoolman/secrets/db_password &&
+    chown -R "$1:$2" /config-root/spoolman/secrets &&
+    chmod 700 /config-root/spoolman/secrets && chmod 600 /config-root/spoolman/secrets/db_password' secret \
+    "$(sed -n 's/^PUID=//p' "$work/env")" "$(sed -n 's/^PGID=//p' "$work/env")" </dev/null
 }
 
 smoke_check() {

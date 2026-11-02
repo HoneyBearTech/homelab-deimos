@@ -68,3 +68,30 @@ def test_the_docs_warn_against_docker_volumes() -> None:
         text = " ".join(read(path).split())
         assert "/var/lib/docker/volumes" in text, path
         assert "docker volume prune" in text, path
+
+
+def test_every_env_file_is_optional_gitignored_and_has_a_committed_template() -> None:
+    ignored = read(".gitignore").splitlines()
+    for name, service in compose()["services"].items():
+        for entry in service.get("env_file") or []:
+            assert isinstance(entry, dict), f"{name}: {entry} must be optional (path + required: false)"
+            path = entry["path"]
+            assert entry.get("required") is False, f"{name}: {path} must not be required"
+            assert path.endswith(".env"), f"{name}: {path} isn't a <service>.env"
+            assert "*.env" in ignored, f"{name}: {path} isn't gitignored"
+            assert (ROOT / f"{path}.example").is_file(), f"{name}: {path}.example is missing"
+
+
+def test_spoolman_reads_its_password_from_its_secret_and_its_server_only_from_spoolman_env() -> None:
+    config = compose()
+    spoolman = config["services"]["spoolman"]
+    mount = "/run/secrets/spoolman_db_password"
+    assert spoolman["environment"]["SPOOLMAN_DB_PASSWORD_FILE"] == mount
+    assert "spoolman_db_password" in spoolman["secrets"]
+    assert config["secrets"]["spoolman_db_password"]["file"] == f"{CONFIG_ROOT}/spoolman/secrets/db_password"
+    # Spoolman refuses an empty database setting, so none may come from compose.yaml or .env.
+    in_compose = {key for key in spoolman["environment"] if key.startswith("SPOOLMAN_DB_")}
+    assert in_compose == {"SPOOLMAN_DB_PASSWORD_FILE"}
+    example = dict(line.split("=", 1) for line in read("spoolman.env.example").splitlines() if line and line[0] != "#")
+    assert all(example.values()), "spoolman.env.example leaves a setting empty"
+    assert "SPOOLMAN_DB_PASSWORD" not in example

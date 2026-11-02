@@ -309,10 +309,14 @@ else
     id=$(compose ps --quiet "$service")
     source=$(data_mounts "$id" | awk -F '\t' -v m="$mount" '$1 == m { print $2 }')
     app=${source#"$config_root"/}
+    # Its secrets as the Compose file declares them: how they reach the container (a bind mount or a copy) depends on
+    # the Docker and Compose versions, so the container's mounts don't always show them.
+    secrets=$(compose config --format json | python3 -I -c '
+import json, sys
+print(len(json.load(sys.stdin)["services"][sys.argv[1]].get("secrets") or []))' "$service")
     if [ -z "$moved" ] && [ -n "$config_root" ] && [ "$source" = "$config_root/${app%/config}/config" ] &&
       [[ "${app%/config}" != */* ]] && [ "${app%/config}" != "$follow_leader" ] &&
-      [ -z "$(left_out "$id" "$mount")" ] &&
-      ! docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$id" | grep -q '^/run/secrets/'; then
+      [ -z "$(left_out "$id" "$mount")" ] && [ "$secrets" = 0 ]; then
       moved=$service
       moved_mount=$mount
       moved_dir=$app
@@ -322,7 +326,8 @@ else
   if [ -n "$moved" ]; then
     moved_owner=$(owner_mode "$(compose ps --quiet "$moved")" "$moved_mount")
     compose stop "$moved"
-    CONFIG_ROOT=$work/elsewhere docker compose create --force-recreate "$moved"
+    # Only that one: `create` would also recreate the services it depends on (the AMS app's Spoolman) elsewhere.
+    CONFIG_ROOT=$work/elsewhere docker compose up --no-start --no-deps --force-recreate "$moved"
     docker run --rm --network none -v "$config_root:/config-root" "$busybox" rm -rf "/config-root/$moved_dir" \
       </dev/null
     echo "$moved: container recreated with its data elsewhere, and its config folder removed"

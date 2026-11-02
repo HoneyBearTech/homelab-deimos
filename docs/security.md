@@ -118,6 +118,7 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 | Logins of services that have them | each service's data | the repository, `.env`, issues, logs you paste |
 | Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
 | autoheal's webhook URL | `autoheal.env` (gitignored, mode `600`) | same |
+| Spoolman's database password (when its database is on a server) | `CONFIG_ROOT/spoolman/secrets/db_password` (`PUID:PGID`, mode `600`) | same, and the stack's backups |
 | The Dozzle agent's key, shared with the Dozzle hub | `CONFIG_ROOT/dozzle/certs/dozzle_key.pem` (root, mode `600`) and a password manager | same, and the stack's backups |
 | The backup push monitor's URL | `backup.env` (gitignored, mode `600`) | same |
 | The key for the backup server | the backup user's `~/.ssh` on the host | same |

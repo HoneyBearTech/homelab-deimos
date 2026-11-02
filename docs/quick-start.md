@@ -37,7 +37,9 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    `CONFIG_ROOT/dozzle/certs` and owned by root; it doesn't start without them
    ([installing.md](installing.md#dozzles-certificate) has the commands). Mealie needs a PostgreSQL database of its
    own on a database server, and its URL in `CONFIG_ROOT/mealie/secrets/database_url`; it doesn't start without it
-   either ([installing.md](installing.md#mealies-database)).
+   either ([installing.md](installing.md#mealies-database)). Spoolman needs the file
+   `CONFIG_ROOT/spoolman/secrets/db_password`, empty unless its database is on a server
+   ([installing.md](installing.md#spoolmans-database)).
 
 4. **Check the GPU** is visible to containers (skip this without one):
 

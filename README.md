@@ -102,7 +102,9 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | `MEALIE_PUBLIC_URL` | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its links in notifications and shared recipes) |
 
 Mealie's database URL, with its password, is a file under `CONFIG_ROOT/mealie/secrets`, never a setting
-([installing](docs/installing.md#mealies-database)). autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
+([installing](docs/installing.md#mealies-database)); so is Spoolman's database password, under
+`CONFIG_ROOT/spoolman/secrets` (empty while it keeps SQLite), with its optional server settings in `spoolman.env`
+([installing](docs/installing.md#spoolmans-database)). autoheal's optional webhook URL (restart notices, for example to Discord) goes in `autoheal.env` (template
 [`autoheal.env.example`](autoheal.env.example), mode `600`, gitignored). The scheduled backup's settings, including
 its push monitor URL, go in `backup.env` (template [`backup.env.example`](backup.env.example), mode `600`,
 gitignored); both files are optional.
