@@ -309,12 +309,14 @@ else
     id=$(compose ps --quiet "$service")
     source=$(data_mounts "$id" | awk -F '\t' -v m="$mount" '$1 == m { print $2 }')
     app=${source#"$config_root"/}
-    # Read whole before matching: `grep -q` exits at its first match, and under pipefail the writer it cuts off would
-    # make the pipeline fail, so a service with secrets would pass for one without.
-    destinations=$'\n'$(docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$id")
+    # Its secrets as the Compose file declares them: how they reach the container (a bind mount or a copy) depends on
+    # the Docker and Compose versions, so the container's mounts don't always show them.
+    secrets=$(compose config --format json | python3 -I -c '
+import json, sys
+print(len(json.load(sys.stdin)["services"][sys.argv[1]].get("secrets") or []))' "$service")
     if [ -z "$moved" ] && [ -n "$config_root" ] && [ "$source" = "$config_root/${app%/config}/config" ] &&
       [[ "${app%/config}" != */* ]] && [ "${app%/config}" != "$follow_leader" ] &&
-      [ -z "$(left_out "$id" "$mount")" ] && [[ $destinations != *$'\n'/run/secrets/* ]]; then
+      [ -z "$(left_out "$id" "$mount")" ] && [ "$secrets" = 0 ]; then
       moved=$service
       moved_mount=$mount
       moved_dir=$app
