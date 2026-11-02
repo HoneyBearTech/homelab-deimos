@@ -326,7 +326,8 @@ print(len(json.load(sys.stdin)["services"][sys.argv[1]].get("secrets") or []))' 
   if [ -n "$moved" ]; then
     moved_owner=$(owner_mode "$(compose ps --quiet "$moved")" "$moved_mount")
     compose stop "$moved"
-    CONFIG_ROOT=$work/elsewhere docker compose create --force-recreate "$moved"
+    # Only that one: `create` would also recreate the services it depends on (the AMS app's Spoolman) elsewhere.
+    CONFIG_ROOT=$work/elsewhere docker compose up --no-start --no-deps --force-recreate "$moved"
     docker run --rm --network none -v "$config_root:/config-root" "$busybox" rm -rf "/config-root/$moved_dir" \
       </dev/null
     echo "$moved: container recreated with its data elsewhere, and its config folder removed"
