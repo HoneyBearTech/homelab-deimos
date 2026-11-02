@@ -309,10 +309,12 @@ else
     id=$(compose ps --quiet "$service")
     source=$(data_mounts "$id" | awk -F '\t' -v m="$mount" '$1 == m { print $2 }')
     app=${source#"$config_root"/}
+    # Read whole before matching: `grep -q` exits at its first match, and under pipefail the writer it cuts off would
+    # make the pipeline fail, so a service with secrets would pass for one without.
+    destinations=$'\n'$(docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$id")
     if [ -z "$moved" ] && [ -n "$config_root" ] && [ "$source" = "$config_root/${app%/config}/config" ] &&
       [[ "${app%/config}" != */* ]] && [ "${app%/config}" != "$follow_leader" ] &&
-      [ -z "$(left_out "$id" "$mount")" ] &&
-      ! docker inspect --format '{{range .Mounts}}{{.Destination}}{{"\n"}}{{end}}' "$id" | grep -q '^/run/secrets/'; then
+      [ -z "$(left_out "$id" "$mount")" ] && [[ $destinations != *$'\n'/run/secrets/* ]]; then
       moved=$service
       moved_mount=$mount
       moved_dir=$app
