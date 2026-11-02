@@ -8,6 +8,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **Create Spoolman's password file before deploying this**, as your user: `install -d -m 700
+  "$CONFIG_ROOT/spoolman/secrets" && install -m 600 /dev/null "$CONFIG_ROOT/spoolman/secrets/db_password"` (empty
+  keeps SQLite). Without it, Spoolman's container can't be created
+  ([docs/installing.md](docs/installing.md#spoolmans-database)).
 - **Give Mealie its database, and set `MEALIE_PUBLIC_URL` in `.env`, before deploying this**
   ([docs/installing.md](docs/installing.md#mealies-database)): a PostgreSQL login that owns one new database on your
   database server, its URL in `CONFIG_ROOT/mealie/secrets/database_url` (owned by `PUID:PGID`, mode `600`), and
@@ -94,6 +98,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- Spoolman's database on a PostgreSQL server, optionally: its settings in a gitignored `spoolman.env` (template
+  `spoolman.env.example`; Spoolman refuses empty database settings, so they can't be `.env` settings with empty
+  defaults) and its password in a Docker secret, `CONFIG_ROOT/spoolman/secrets/db_password` (never backed up).
+  Without `spoolman.env` it keeps SQLite as before. The smoke test writes the empty file.
 - **Mealie** 3.30.0 (recipes, meal plans and shopping lists), on port 9925, with its database in PostgreSQL on a
   database server outside the stack: the connection URL, with the login's password, is a Docker secret file under
   `CONFIG_ROOT/mealie/secrets`, never a setting, and is neither committed nor backed up. It runs as `PUID:PGID` with

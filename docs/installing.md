@@ -62,6 +62,7 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
 | Mealie's recipe images, its own backups and the keys it signs sign-ins with | `CONFIG_ROOT/mealie/config` | `/app/data` |
 | Mealie's database URL (not backed up; [below](#mealies-database)) | `CONFIG_ROOT/mealie/secrets/database_url` | `/run/secrets/mealie_database_url`, read-only |
+| Spoolman's database password (not backed up; empty with SQLite; [below](#spoolmans-database)) | `CONFIG_ROOT/spoolman/secrets/db_password` | `/run/secrets/spoolman_db_password`, read-only |
 | The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
 
 The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
@@ -87,8 +88,9 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
    ```
 
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
-   ([below](#dozzles-certificate)), and Mealie the URL of its database in `CONFIG_ROOT/mealie/secrets`
-   ([below](#mealies-database)).
+   ([below](#dozzles-certificate)), Mealie the URL of its database in `CONFIG_ROOT/mealie/secrets`
+   ([below](#mealies-database)), and Spoolman the file for its database password, empty while it keeps SQLite
+   ([below](#spoolmans-database)).
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -187,6 +189,40 @@ The file is never in the stack's backups (`scripts/backup.sh` copies read-write 
 backed up on its server, not here. To give the login a new password (`ALTER ROLE mealie PASSWORD '…'` on the
 server), write the file again as in step 2 and `docker compose restart mealie`; on a rebuilt host, write it again
 the same way.
+
+## Spoolman's database
+
+Spoolman keeps its database in SQLite in its folder unless `spoolman.env` points it at a PostgreSQL server. Either
+way it reads a password file (a Docker secret, mounted read-only at `/run/secrets/spoolman_db_password`), and its
+container can't be created while the file is missing. With SQLite, make it empty, as the user who runs the stack:
+
+```sh
+. ./.env
+install -d -m 700 "$CONFIG_ROOT/spoolman/secrets"
+install -m 600 /dev/null "$CONFIG_ROOT/spoolman/secrets/db_password"
+```
+
+To keep it on a PostgreSQL server instead:
+
+1. **On the database server**, make a login that owns one new database (`CREATE ROLE spoolman LOGIN PASSWORD
+   '<the password>'; CREATE DATABASE spoolman OWNER spoolman;`) and let it connect from this host.
+2. **On this host**, write the password into the file with **no line break after it** (Spoolman reads the whole
+   file as the password), and create `spoolman.env` from `spoolman.env.example` (mode `600`) with the server's name:
+
+   ```sh
+   (umask 077 && read -rsp 'Password: ' pw && echo && printf '%s' "$pw" >"$CONFIG_ROOT/spoolman/secrets/db_password")
+   cp spoolman.env.example spoolman.env && chmod 600 spoolman.env   # then set SPOOLMAN_DB_HOST
+   ```
+
+3. **Recreate it**: `docker compose up -d spoolman`. On its first start on an empty database Spoolman makes its
+   tables.
+
+Spoolman doesn't move its data over. To keep it, stop Spoolman after that first start, copy `spoolman.db` from its
+folder, empty every table in the new database (`TRUNCATE … RESTART IDENTITY`; the first start fills
+`alembic_version`, which holds the same revision on both engines) and copy the data with pgloader (`data only`,
+`quote identifiers`); compare each table's row count before starting it again. Removing `spoolman.env` and
+recreating it goes back to the SQLite file, without what was written to PostgreSQL in between. The password file
+and the database are never in the stack's backups; back the database up on its server.
 
 ## Scheduled backups
 

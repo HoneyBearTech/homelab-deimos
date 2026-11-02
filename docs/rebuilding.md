@@ -114,6 +114,8 @@ its spools, and Mealie its recipes, with their images.
   password manager (step 4).
 - **Mealie's database and its URL**: the database is on its server, backed up there; the URL
   (`CONFIG_ROOT/mealie/secrets/database_url`) is written again (step 4).
+- **Spoolman's database password** (`CONFIG_ROOT/spoolman/secrets/db_password`): written again, or empty while it
+  keeps SQLite; with `spoolman.env`, its database is on its server, backed up there.
 - **Host settings**: the static address, the GPU passthrough, the network share's mount, SSH keys, monitoring
   agents.
 - **Other machines' view of this one**: reverse proxy hosts, DNS records, anything that reaches Deimos by
