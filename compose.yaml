@@ -1,9 +1,11 @@
 # The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory), the AMS app that
-# keeps Spoolman in step with the printers' material systems and Mealie (recipes and meal plans), plus autoheal
-# (behind a filtering socket proxy) to restart any of them that turns unhealthy, and a Dozzle agent that serves the
-# host's container logs to the homelab's Dozzle on another host. Every setting comes from .env (template:
-# .env.example; reference: docs/interfaces.md); autoheal's optional webhook from autoheal.env (template:
-# autoheal.env.example), Spoolman's optional database server from spoolman.env (template: spoolman.env.example), the
+# keeps Spoolman in step with the printers' material systems, Mealie (recipes and meal plans) and social-to-mealie
+# (imports recipes from social-media posts into Mealie), plus autoheal (behind a filtering socket proxy) to restart any
+# of them that turns unhealthy, and a Dozzle agent that serves the host's container logs to the homelab's Dozzle on
+# another host. Every setting comes from .env (template: .env.example; reference: docs/interfaces.md); autoheal's
+# optional webhook from autoheal.env (template: autoheal.env.example), Spoolman's optional database server from
+# spoolman.env (template: spoolman.env.example), social-to-mealie's API keys from social-to-mealie.env (template:
+# social-to-mealie.env.example), the
 # Dozzle agent's certificate and key from files under CONFIG_ROOT/dozzle/certs, Mealie's database URL from a file under
 # CONFIG_ROOT/mealie/secrets and Spoolman's database password from one under CONFIG_ROOT/spoolman/secrets (Docker
 # secrets, at the end). Every image is
@@ -215,6 +217,50 @@ services:
     healthcheck:
       <<: *healthcheck
       test: ["CMD", "/app/healthcheck.sh"]
+
+  social-to-mealie:
+    <<: *hardened
+    # Imports a recipe from a social-media post (Instagram, TikTok, YouTube Shorts and the like) into Mealie: yt-dlp, or
+    # gallery-dl for picture posts, fetches the post, OpenAI's API transcribes its audio and writes the recipe, and it
+    # posts that to Mealie in this stack. It has no login of its own: keep it on the LAN, behind the reverse proxy's
+    # access list. Versions before 1.8.2 let anyone who reached it run commands in it (GHSA-r63c-m6m6-mvh3).
+    image: ghcr.io/gerardpollorebozado/social-to-mealie:v1.8.2@sha256:fc63ef76f0dda92ebd97213c5772fccfacf985e382336eccd5df5cf1af61f5b1
+    container_name: social-to-mealie
+    restart: unless-stopped
+    # Its image runs it as its own user, so it needs no capability; it writes only its temporary files and Next.js'
+    # cache.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      # The yt-dlp built into the pinned image. By default its entrypoint would install the newest one from PyPI at
+      # each start: code nobody here reviewed, in a container that holds both API keys.
+      YTDLP_VERSION: none
+      OPENAI_URL: https://api.openai.com/v1
+      # Mealie in this stack, by its service name; the recipe links it shows point at Mealie's public address.
+      MEALIE_URL: http://mealie:9000
+      EXTERNAL_MEALIE_URL: ${MEALIE_PUBLIC_URL:?set MEALIE_PUBLIC_URL in .env}
+    # Its API keys and the models it uses (template: social-to-mealie.env.example). It reads them only from its
+    # environment. Without the file it starts, but every import fails.
+    env_file:
+      - path: social-to-mealie.env
+        required: false
+    labels:
+      autoheal: "true"
+    ports:
+      - "9926:3000" # web UI: keep it on the LAN
+    healthcheck:
+      <<: *healthcheck
+      # Its web app manifest, which the app answers by itself; its home page would ask Mealie as well.
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch("http://127.0.0.1:3000/manifest.webmanifest")
+          .then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
 
   # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
   # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version. It accepts only a hub

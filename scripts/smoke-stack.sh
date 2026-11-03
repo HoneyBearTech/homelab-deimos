@@ -24,6 +24,7 @@ spoolman_prepare() {
 smoke_check() {
   dozzle_check
   mealie_check
+  social_to_mealie_check
 }
 
 # The throwaway CONFIG_ROOT.
@@ -170,4 +171,27 @@ mealie_check() {
   [[ $(compose logs --no-color "$mealie_service") != *"Read-only file system"* ]] ||
     fail "Mealie tried to write to its read-only root filesystem"
   echo "Mealie: keeps its data in PostgreSQL ($tables tables), over TLS, with no SQLite file and a read-only root"
+}
+
+# social-to-mealie (no keys here, so no import runs): that it keeps the yt-dlp built into its image instead of fetching
+# one from PyPI, refuses anything but an http(s) URL before its downloaders run (the check 1.8.2 added), reaches Mealie
+# in the stack by its service name, and never writes to its read-only root filesystem.
+stm_service=social-to-mealie
+
+# Runs a script with node in the social-to-mealie container (its image has neither curl nor wget) and prints its output.
+stm_node() { compose exec -T "$stm_service" node -e "$1" </dev/null; }
+
+social_to_mealie_check() {
+  local logs out
+  logs=$(compose logs --no-color "$stm_service")
+  [[ $logs == *"yt-dlp update skipped"* ]] || fail "social-to-mealie didn't keep the yt-dlp built into its image"
+  out=$(stm_node 'fetch("http://127.0.0.1:3000/api/get-url", {method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({url: "not a url", tags: []})})
+    .then((r) => r.text()).then(console.log)')
+  [[ $out == *"valid http(s) URL"* ]] || fail "social-to-mealie didn't refuse a URL that isn't http(s): $out"
+  out=$(stm_node 'fetch("http://mealie:9000/api/app/about").then((r) => console.log(r.status))')
+  [ "$out" = 200 ] || fail "social-to-mealie doesn't reach Mealie at http://mealie:9000: ${out:-no answer}"
+  [[ $logs != *"ead-only file system"* && $logs != *EROFS* ]] ||
+    fail "social-to-mealie tried to write to its read-only root filesystem"
+  echo "social-to-mealie: keeps its own yt-dlp, refuses non-http(s) URLs, reaches Mealie, and has a read-only root"
 }

@@ -2,7 +2,8 @@
 
 homelab-deimos is the Docker Compose definition of **Deimos**, a homelab server for media processing, 3D printing
 and the household: Tdarr, which keeps the media library in consistent formats using the GPU, the services that track
-the 3D printers' filament, and Mealie, for recipes and meal plans. Deimos is an Ubuntu 24.04 virtual machine on amd64 with an NVIDIA GPU passed through.
+the 3D printers' filament, and Mealie, for recipes and meal plans, with social-to-mealie to import recipes from
+social-media posts. Deimos is an Ubuntu 24.04 virtual machine on amd64 with an NVIDIA GPU passed through.
 The repository holds configuration, not application code: the services run from their upstream images, pinned by
 digest.
 
@@ -17,6 +18,7 @@ digest.
 | Dozzle agent | the project's own image | Agent that serves the containers' logs (read through the Docker socket) to the homelab's Dozzle on another host, which shows every host's logs in one web UI |
 | AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used, read from the print's sliced file (fetched over FTPS) |
 | [Mealie](https://github.com/mealie-recipes/mealie) | the project's own image | Recipes (typed in, or imported from a recipe's web page), meal plans and shopping lists, for the household's accounts; web UI and REST API. Its database is PostgreSQL on a database server outside this stack |
+| [social-to-mealie](https://github.com/GerardPolloRebozado/social-to-mealie) | the project's own image | Turns a recipe posted on Instagram, TikTok, YouTube Shorts and similar sites into a Mealie recipe: fetches the post (yt-dlp, or gallery-dl for picture posts), has OpenAI's API transcribe its audio and write the recipe, and posts it to Mealie through Mealie's API. Keeps no data; no login of its own |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
 agent) come from their own projects; this stack doesn't include or manage them.
@@ -35,13 +37,14 @@ agent) come from their own projects; this stack doesn't include or manage them.
 | The printers | Report their material systems and prints to the AMS app over MQTT; serve the sliced files over FTPS |
 | Home automation | Reads Spoolman through its API (optional) |
 | The database server | Holds Mealie's database (PostgreSQL), and backs it up |
-| Websites | Serve the recipe pages Mealie is asked to import |
+| Websites | Serve the recipe pages Mealie is asked to import, and the posts social-to-mealie is asked to import |
+| OpenAI's API | Transcribes the posts' audio and writes their recipes, for social-to-mealie |
 | The homelab's Dozzle | Connects to the Dozzle agent's port to show this host's container logs in its web UI |
 
 ## Data flow
 
 ```
-LAN clients ──HTTP(S) via reverse proxy──▶ Tdarr UI · Spoolman UI/API · AMS app · Mealie UI/API
+LAN clients ──HTTP(S) via reverse proxy──▶ Tdarr UI · Spoolman UI/API · AMS app · Mealie UI/API · social-to-mealie
 
 Tdarr ──read/write──▶ media library (network share or local disk)
 Tdarr ──NVIDIA runtime──▶ GPU
@@ -53,6 +56,10 @@ AMS app ──REST──▶ Spoolman (inside the stack)
 
 Mealie ──PostgreSQL over TLS──▶ its database, on the database server
 Mealie ──HTTPS──▶ recipe pages it is asked to import
+
+social-to-mealie ──HTTPS──▶ the posts it is asked to import
+social-to-mealie ──HTTPS──▶ OpenAI's API: transcription and the recipe
+social-to-mealie ──REST──▶ Mealie (inside the stack)
 
 autoheal ──(internal network)──▶ socket-proxy ──read-only socket──▶ Docker: restarts unhealthy containers
 Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only socket──▶ Docker: container logs
