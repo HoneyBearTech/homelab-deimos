@@ -8,6 +8,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **For social-to-mealie, create `social-to-mealie.env` before deploying this**
+  ([docs/installing.md](docs/installing.md#social-to-mealie)): an OpenAI API key (with a spending limit), a Mealie API
+  token of a user of its own (not an administrator), and the two models. Without it the stack deploys and
+  social-to-mealie starts, but every import fails. Keep port 9926 on the LAN: it has no login.
 - **Create Spoolman's password file before deploying this**, as your user: `install -d -m 700
   "$CONFIG_ROOT/spoolman/secrets" && install -m 600 /dev/null "$CONFIG_ROOT/spoolman/secrets/db_password"` (empty
   keeps SQLite). Without it, Spoolman's container can't be created
@@ -98,6 +102,16 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- **social-to-mealie** 1.8.2 on port 9926: turns a recipe posted on Instagram, TikTok, YouTube Shorts and the like
+  into a Mealie recipe, using OpenAI's API, and posts it to Mealie inside the stack (`http://mealie:9000`; its links
+  point at `MEALIE_PUBLIC_URL`). Its API keys and models are in a gitignored `social-to-mealie.env` (template
+  `social-to-mealie.env.example`), since it reads them only from its environment; no new `.env` setting. It runs as
+  its image's own user with no capabilities and a read-only root (`/tmp` and Next.js' cache in memory), keeps no data,
+  and keeps the yt-dlp built into its pinned image (`YTDLP_VERSION: none`; by default it installs the newest one from
+  PyPI at each start). 1.8.2 fixes GHSA-r63c-m6m6-mvh3 (any earlier version lets whoever reaches it run commands in
+  it). It has no login: keep it on the LAN. Its updates merge automatically like the other services' (not Tdarr's).
+  The smoke test checks that it keeps its own yt-dlp, refuses a URL that isn't http(s), reaches Mealie by its service
+  name, and never writes to its read-only root.
 - Spoolman's database on a PostgreSQL server, optionally: its settings in a gitignored `spoolman.env` (template
   `spoolman.env.example`; Spoolman refuses empty database settings, so they can't be `.env` settings with empty
   defaults) and its password in a Docker secret, `CONFIG_ROOT/spoolman/secrets/db_password` (never backed up).

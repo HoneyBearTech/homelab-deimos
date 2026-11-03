@@ -54,7 +54,7 @@ Known vulnerabilities in the images the stack runs are handled as described in
 ## Scope
 
 homelab-deimos is a Docker Compose stack: a version-pinned selection of upstream images (Tdarr, Spoolman,
-the AMS app and Mealie), how they're wired together, a policy checker and backup scripts. What it does and doesn't protect against
+the AMS app, Mealie and social-to-mealie), how they're wired together, a policy checker and backup scripts. What it does and doesn't protect against
 is described in [docs/security.md](docs/security.md) (its security requirements), and the reasoning in
 [docs/assurance-case.md](docs/assurance-case.md) (threat model, trust boundaries and the defences against
 common weaknesses).

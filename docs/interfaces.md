@@ -18,7 +18,7 @@ setting marked required stops `docker compose` with an error naming it when it's
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
 | `CONFIG_ROOT` | yes | `/srv/config` | Host folder holding every app's data, one folder per app: `CONFIG_ROOT/<app>/config` and any other folder beside it ([where data lives](installing.md#where-data-lives)). Never inside `/var/lib/docker/volumes`. |
 | `SPOOLMAN_PUBLIC_URL` | yes | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at; the AMS app's links point there. |
-| `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there. |
+| `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there, and so do the links social-to-mealie shows after an import. |
 
 No secret is a setting. A service that reads a secret from a file gets it as a Docker secret, a file under
 `CONFIG_ROOT` ([volumes and mounts](#volumes-and-mounts)). A secret a service can only take from its environment gets
@@ -28,6 +28,7 @@ its own gitignored `<service>.env` (mode `600`) with a committed `<service>.env.
 | --- | --- | --- |
 | `autoheal.env` (optional; template [`autoheal.env.example`](../autoheal.env.example)) | `WEBHOOK_URL` | Where autoheal posts a notice for each restart (a Discord channel webhook works as is). A secret: anyone with it can post to the channel. |
 | `spoolman.env` (optional; template [`spoolman.env.example`](../spoolman.env.example)) | `SPOOLMAN_DB_TYPE`, `SPOOLMAN_DB_HOST`, `SPOOLMAN_DB_PORT`, `SPOOLMAN_DB_NAME`, `SPOOLMAN_DB_USERNAME`, `SPOOLMAN_DB_QUERY` | Spoolman's database on a PostgreSQL server (`postgres`, the server, `5432`, the database and its login, `ssl=require` to encrypt the connection). None may be empty; without the file, SQLite in its folder. The password is a file, below ([installing.md](installing.md#spoolmans-database)). |
+| `social-to-mealie.env` (needed for imports; template [`social-to-mealie.env.example`](../social-to-mealie.env.example)) | `OPENAI_API_KEY`, `MEALIE_API_KEY`, `TRANSCRIPTION_MODEL`, `TEXT_MODEL` | social-to-mealie's OpenAI API key and Mealie API token (both secrets), and the OpenAI models it transcribes with (`whisper-1`) and writes the recipe with (a chat model with structured outputs, such as `gpt-4o-mini`). Without the file it starts, but every import fails ([installing.md](installing.md#social-to-mealie)). |
 
 ### `backup.env`
 
@@ -59,6 +60,10 @@ SQLite file of its own, and takes new accounts only by an administrator's invita
 limited to 1000 MB of memory, as in Mealie's own example. Its other settings (e-mail, single sign-on, an AI provider)
 are Mealie's defaults until a pull request sets them ([Mealie's settings](https://mealie.io/documentation/getting-started/installation/backend-config/)).
 
+social-to-mealie keeps the yt-dlp built into its image (`YTDLP_VERSION: none`; by default it would install the newest
+one from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), and reaches Mealie inside the stack at
+`http://mealie:9000`; the recipe links it shows point at `MEALIE_PUBLIC_URL`.
+
 ## Services and ports
 
 | Service | Image | Host port → container | What |
@@ -68,14 +73,16 @@ are Mealie's defaults until a pull request sets them ([Mealie's settings](https:
 | Spoolman | `ghcr.io/donkie/spoolman` | 7912 → 8000 | Web UI and REST API (LAN only) |
 | AMS app (HaspelSync) | `ghcr.io/rdiger-36/haspelsync` | 4000 → 4000 | Web UI (LAN only; set a password under Settings → Network access) |
 | Mealie | `ghcr.io/mealie-recipes/mealie` | 9925 → 9000 | Web UI and REST API (LAN only; its own login) |
+| social-to-mealie | `ghcr.io/gerardpollorebozado/social-to-mealie` | 9926 → 3000 | Web UI and its import API (LAN only; no login of its own) |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 | Dozzle agent | `amir20/dozzle` | 7007 → 7007 | Agent for the homelab's Dozzle on another host (LAN only); no web UI of its own |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
 `/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, Mealie's own `/app/healthcheck.sh`
-(`/api/app/about`), autoheal's process, the proxy's `/_ping` and the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to
-stop before restarting it; a service gets 10 minutes after it starts before failed checks count.
+(`/api/app/about`), social-to-mealie's `/manifest.webmanifest`, autoheal's process, the proxy's `/_ping` and the
+Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to stop
+before restarting it; a service gets 10 minutes after it starts before failed checks count.
 
 ## GPU
 
@@ -109,7 +116,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | Label | Meaning |
 | --- | --- |
 | `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
-| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, socket-proxy and the Dozzle agent. |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, socket-proxy and the Dozzle agent. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
 | `org.honeybeartech.deimos.backup.exclude` | Paths inside a service's data mounts (comma-separated, exact container paths, at any depth) that `scripts/backup.sh` leaves out of the mount's archive and `scripts/restore.sh` leaves in place. A path that isn't inside one of the service's data mounts, or contains `..` or a pattern character (`*?[\`), makes both fail before anything stops. Not in use. |
 
@@ -133,7 +140,9 @@ storage. From the services: Tdarr downloads its components and plugin updates fr
 Spoolman fetches the SpoolmanDB filament catalogue from `donkie.github.io`; Tdarr nodes on
 other machines connect to port 8266; the AMS app connects to each printer on the LAN over MQTT
 (port 8883) and FTPS (port 990), and to Spoolman inside the stack; Mealie connects to its PostgreSQL server (port
-5432, TLS) and fetches the recipe pages and images it is asked to import, from any website. The scheduled backup to
+5432, TLS) and fetches the recipe pages and images it is asked to import, from any website; social-to-mealie fetches
+the posts it is asked to import from their sites, sends their audio and text to OpenAI's API (`api.openai.com`), and
+posts the recipe to Mealie inside the stack. The scheduled backup to
 `BACKUP_REMOTE` (rsync,
 usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 

@@ -90,7 +90,8 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
    ([below](#dozzles-certificate)), Mealie the URL of its database in `CONFIG_ROOT/mealie/secrets`
    ([below](#mealies-database)), and Spoolman the file for its database password, empty while it keeps SQLite
-   ([below](#spoolmans-database)).
+   ([below](#spoolmans-database)). social-to-mealie needs its API keys in `social-to-mealie.env` before it can import
+   anything ([below](#social-to-mealie)).
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -224,6 +225,26 @@ folder, empty every table in the new database (`TRUNCATE … RESTART IDENTITY`; 
 recreating it goes back to the SQLite file, without what was written to PostgreSQL in between. The password file
 and the database are never in the stack's backups; back the database up on its server.
 
+## social-to-mealie
+
+social-to-mealie turns a post on Instagram, TikTok, YouTube Shorts and similar sites into a Mealie recipe: it fetches
+the post, has OpenAI's API transcribe its audio and write the recipe, and sends that to Mealie inside the stack. It
+keeps no data of its own; it needs two keys and the names of two models, which it reads only from its environment,
+so they go in `social-to-mealie.env` (gitignored, mode `600`, in the stack's backups like `.env`). Without the file it
+starts, but every import fails.
+
+1. **In Mealie**, make a user for it (not an administrator; the recipes it imports belong to that user), sign in as
+   that user and create an API token under the user's profile (API tokens).
+2. **At OpenAI**, create an API key, ideally in a project of its own with a monthly spending limit: every import
+   costs a little, and anyone who can reach social-to-mealie can start one.
+3. **On this host**, `cp social-to-mealie.env.example social-to-mealie.env && chmod 600 social-to-mealie.env`, put
+   both keys in it, and keep or change the models (a speech-to-text model, and a chat model with structured outputs),
+   then `docker compose up -d social-to-mealie`.
+
+It has no login of its own: keep its port (9926) on the LAN, behind the reverse proxy's access list. Browsers install
+it as an app (to share links to it from a phone) only over HTTPS, so through the reverse proxy. Use version 1.8.2 or
+later: earlier versions let anyone who could reach it run commands in its container (GHSA-r63c-m6m6-mvh3).
+
 ## Scheduled backups
 
 `scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync
@@ -297,14 +318,16 @@ has none; [rebuilding.md](rebuilding.md#an-encrypted-backup)).
 
 ## Running it securely
 
-- **Web UIs on the LAN only.** Tdarr, Spoolman and the AMS app mostly have no login of their own. Don't publish
-  their ports beyond the LAN; Docker-published ports bypass host firewalls such as `ufw`, so restrict them at the
+- **Web UIs on the LAN only.** Tdarr, Spoolman, the AMS app and social-to-mealie mostly have no login of their own;
+  whoever reaches social-to-mealie spends its OpenAI key and adds recipes to Mealie. Don't publish their ports beyond
+  the LAN; Docker-published ports bypass host firewalls such as `ufw`, so restrict them at the
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
 - **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
   Network access. Mealie always has one: change its first account's e-mail and password at once
   ([Mealie's database](#mealies-database), step 3).
-- **Mealie fetches whatever address it is given** to import a recipe, including addresses on the LAN, and anyone with
-  an account can give it one. New accounts need an administrator's invitation; invite only people you trust.
+- **Mealie and social-to-mealie fetch whatever address they are given** to import a recipe, including addresses on
+  the LAN: anyone with a Mealie account, and anyone who reaches social-to-mealie, can give them one. New Mealie
+  accounts need an administrator's invitation; invite only people you trust.
 - **HaspelSync answers only the host names it knows.** Under its IP address it works as is; reached through a
   reverse proxy or under a DNS name, it refuses every request (`403`) until that name is added under Settings →
   Allowed host names. Its API answers only its own web UI and callers with an API key.
