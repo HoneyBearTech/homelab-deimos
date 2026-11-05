@@ -293,6 +293,8 @@ terms, and no [torrents at risk](#torrent-watch) asked for, it does nothing.
 Nobody is asked before a torrent is added, and it seeds from the same public IP address as everything else in
 qBittorrent ([above](#qbittorrent)), until you remove it. So a torrent is added only when all of these hold:
 
+- its name doesn't mark it as uncensored, by the words the index's own filter looks for: `uncensored`, `abliterated`,
+  `heretic`, `decensored`, `obliteratus` and `obliterated`, anywhere in the name, in any case;
 - the index names its licence, and that is MIT, Apache-2.0, WTFPL or OpenMDW-1.1, none of which has terms to accept;
 - the index names its size, and that is within `TORRENT_WATCH_MAX_TORRENT_GB`;
 - what the category holds in qBittorrent stays within `TORRENT_WATCH_MAX_TOTAL_GB` with it added;
@@ -333,7 +335,7 @@ you've set one ([above](#qbittorrent)), so that is what leaves room for everythi
 word: a torrent with no observed seeders whose source is still available. What is at risk now is the point, so nothing
 is only recorded first, and it takes the smallest first, to save the most torrents per GB. The rules above still hold, so
 expect it to stop at your limits long before it runs out of torrents: the list can come to many terabytes. It asks for
-the whole list every 6 hours, about 75 requests over several minutes, and adds from that answer at each poll. The index's
+the whole list every 6 hours, about 100 requests over several minutes, and adds from that answer at each poll. The index's
 list has ended at different lengths from one run to the next, so what it sees may not be everything at risk. With no
 seeders the data comes from the index's web seed, so speeds vary, and a download can stall for as long as that does. One
 that never finishes keeps counting toward the limits until you remove it.

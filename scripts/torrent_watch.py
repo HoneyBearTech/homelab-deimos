@@ -16,6 +16,9 @@ source is still available, smallest first, under the same rules. Nothing is reco
 risk now is the point. The index's list has ended at different lengths from one run to the next, so what it sees may not
 be everything at risk.
 
+A model whose name marks it as uncensored is never added, however it was found. That goes by the name alone, with the
+words the index's own filter looks for, so a model with its safeguards removed under another name gets through.
+
 Once any torrent in qBittorrent has finished, not only one of its own, the next poll switches it to forced seeding, so
 that qBittorrent's queue limits don't stop it seeding. That happens once per torrent: one switched back by hand, or
 stopped, stays that way.
@@ -59,9 +62,9 @@ POLL_SECONDS = 1800
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
 # A second limit on top of the sizes, in case the index ever lists a run of torrents as new by mistake.
 MAX_ADDS_PER_POLL = 3
-# How often it asks the index for the whole list, about 75 requests so far; each poll adds from the last answer.
+# How often it asks the index for the whole list, about 100 requests so far; each poll adds from the last answer.
 AT_RISK_RESCAN_SECONDS = 6 * 3600
-# The longest list so far took 33 pages for one licence, and lengths vary: this only guards against one that never ends.
+# The longest list so far took 42 pages for one licence, and lengths vary: this only guards against one that never ends.
 MAX_PAGES_PER_LICENSE = 100
 # The search stops at about 90 rows, best-seeded first, so a new torrent with no seeders can miss a longer list.
 BROAD_TERM_ROWS = 75
@@ -71,6 +74,8 @@ GB = 1000**3  # as the index counts them
 ROW_RE = re.compile(r"^(?P<repo>[\w.-]+/[\w.-]+)\s.*\s(?P<magnet>magnet:\?\S+)\s*$")
 MAGNET_RE = re.compile(r"^magnet:\?xt=urn:btih:(?P<hash>[0-9a-fA-F]{40})(?:&\S*)?$")
 NO_MATCH = "No torrents match"
+# What the index's own filter for uncensored models looks for: these words anywhere in the name, in any case.
+UNCENSORED_WORDS = ("abliterated", "decensored", "heretic", "obliterated", "obliteratus", "uncensored")
 
 
 class WatchError(Exception):
@@ -194,6 +199,12 @@ def fetch(url: str) -> str:
     return read_url(urllib.request.build_opener(), url, None, "the index")
 
 
+def is_uncensored(repo: str) -> bool:
+    """Whether a model's name marks it as uncensored."""
+    name = repo.lower()
+    return any(word in name for word in UNCENSORED_WORDS)
+
+
 def is_at_risk(model: dict[str, Any]) -> bool:
     """Whether the index counts a model as at risk: a torrent, no observed seeders, its source still available."""
     seed = model.get("seed")
@@ -239,6 +250,7 @@ class Index:
         rows = parse_search(self.get(f"{self.base_url}/s/{words}"))
         if len(rows) >= BROAD_TERM_ROWS:
             log.warning("%r matches %d torrents: new ones may not show up, so narrow it", term.text, len(rows))
+        rows = [row for row in rows if not is_uncensored(row.repo)]
         if term.author:
             return [row for row in rows if row.repo.split("/")[0].lower() == term.author]
         return rows
@@ -263,7 +275,8 @@ class Index:
                     query = {"license": license_name, **({"cursor": cursor} if cursor else {})}
                     page = json.loads(self.get(f"{self.base_url}/api/models?{urllib.parse.urlencode(query)}"))
                     for model in filter(is_at_risk, page["models"]):
-                        found[model["id"]] = {"repo": model["id"], **read_details(model)._asdict()}
+                        if not is_uncensored(model["id"]):
+                            found[model["id"]] = {"repo": model["id"], **read_details(model)._asdict()}
                     cursor = page.get("nextCursor")
                     if not cursor:
                         break

@@ -792,6 +792,43 @@ def test_a_term_with_a_slash_keeps_only_that_authors_models(site: tuple[Site, st
     assert magnets(stand_in) == [OLD]
 
 
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "a/Qwen3.8-27B-Uncensored-GGUF",
+        "a/model-ABLITERATED",
+        "a/model-heretic-v2",
+        "a/Decensored-model",
+        "a/model-OBLITERATUS",
+        "a/Obliterated_model",
+        "uncensored-labs/model",
+    ],
+)
+def test_an_uncensored_model_is_never_added_whichever_way_it_is_found(
+    site: tuple[Site, str], tmp_path: Path, repo: str
+) -> None:
+    stand_in, url = site
+    config = make_config(url, tmp_path, "qwen")._replace(at_risk=True)
+    run(config)
+    stand_in.search["qwen"] = [row(repo, NEW)]
+    stand_in.models[repo] = {"license": "mit", "sizeBytes": GB}
+    stand_in.list_at_risk(repo, NEW)
+    state = state_of(config)
+    state["at_risk"]["scanned"] = 0
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert stand_in.added == []
+    assert state_of(config)["at_risk"]["models"] == []
+    assert NEW not in state_of(config)["pending"]
+
+
+def test_a_similar_name_isnt_taken_for_an_uncensored_one(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/censorship-classifier", NEW)
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
 def test_a_search_with_many_rows_warns_that_the_term_is_broad(
     watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
 ) -> None:
