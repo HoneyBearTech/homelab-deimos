@@ -11,8 +11,9 @@ downloading has finished. Anything it can't tell counts as a no, and is looked a
 falls below that free space anyway, its own torrents that are still downloading are stopped, and stay stopped until
 someone starts them again.
 
-Once one of its torrents has finished, the next poll switches it to forced seeding, so that qBittorrent's queue limits
-don't stop it seeding. That happens once per torrent: one switched back by hand, or stopped, stays that way.
+Once any torrent in qBittorrent has finished, not only one of its own, the next poll switches it to forced seeding, so
+that qBittorrent's queue limits don't stop it seeding. That happens once per torrent: one switched back by hand, or
+stopped, stays that way.
 
 Standard library only: compose.yaml runs it in a pinned Python image.
 """
@@ -309,8 +310,8 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
             total += size
             if remaining > 0 and not torrent.get("state", "").startswith(("stopped", "paused")):
                 incomplete.append(key)
-            if torrent.get("state") in SEEDING_STATES:
-                seeding.append(key)
+        if torrent.get("state") in SEEDING_STATES:
+            seeding.append(key)
     return Snapshot(free, frozenset(known), total, left, tuple(incomplete), tuple(seeding))
 
 
@@ -436,7 +437,7 @@ class Watch:
             )
 
     def force_finished(self, snapshot: Snapshot) -> None:
-        """Switch its own finished torrents to forced seeding, once each; failing to doesn't hold up the poll."""
+        """Switch every finished torrent to forced seeding, once each; failing to doesn't hold up the poll."""
         forced = self.state["forced"]
         finished = tuple(key for key in snapshot.seeding if key not in forced)
         if not finished:

@@ -344,7 +344,7 @@ services:
       TORRENT_WATCH_QBITTORRENT_USERNAME: ${TORRENT_WATCH_QBITTORRENT_USERNAME:-admin}
       # The script's checksum (a test checks it): Compose doesn't recreate a container when only a file mounted into it
       # changes, and a pull replaces that file, which leaves the running container's mount pointing at nothing.
-      TORRENT_WATCH_SCRIPT_SHA256: 5cdf0bee8cd9cd2e09d5d9bdbcde57ddb37da21526d73435cb995b63bc5c4792
+      TORRENT_WATCH_SCRIPT_SHA256: ef426c60ab3dc10e423373e9200f4ec4bd3d6eafa404e1837b9b215fba10202a
     labels:
       autoheal: "true"
     volumes:

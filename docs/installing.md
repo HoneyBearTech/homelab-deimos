@@ -303,9 +303,11 @@ the disk falls below `TORRENT_WATCH_MIN_FREE_GB` anyway, it stops its own unfini
 until you start them again. A torrent you remove from qBittorrent makes room under the category's limit, and is never
 added again.
 
-Once one of its torrents has finished, the next poll switches it to forced seeding, so that qBittorrent's queue limits
-don't stop it seeding. That happens once per torrent: one you switch back or stop stays that way. Only its own category
-is touched, not your own uploads or what you add by hand. Forced torrents still count toward a global upload limit, if
+Once any torrent in qBittorrent has finished, the next poll switches it to forced seeding, so that qBittorrent's queue
+limits don't stop it seeding. That covers every torrent there, your own uploads and what you add by hand included, and
+what is already seeding at its first poll, though only while it has a watch term to run. It happens once per torrent:
+one you switch back or stop stays that way. Stopping for lack of space still touches only its own category. Forced
+torrents still count toward a global upload limit, if
 you've set one ([above](#qbittorrent)), so that is what leaves room for everything else on your connection.
 
 1. **Give it qBittorrent's password.** Compose can't create the container without this file, so on a new installation

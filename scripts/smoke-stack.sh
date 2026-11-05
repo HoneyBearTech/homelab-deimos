@@ -254,8 +254,8 @@ qbittorrent_check() {
 # torrent-watch: a throwaway password file, as on the host (with no watch terms the service itself never uses it). Then
 # the script's real poll, in its container, against this stack's qBittorrent signed in with the temporary password, with
 # a stand-in for the index: that it records what a term matches at first, adds what comes later under its own category
-# and folder, leaves a torrent with the wrong licence out, and switches its own finished torrent to forced seeding, but
-# not one still fetching its metadata. Everything it adds is removed again, as above.
+# and folder, leaves a torrent with the wrong licence out, and switches a finished torrent outside its category to
+# forced seeding, but not one still fetching its metadata. Everything it adds is removed again, as above.
 tw_service=torrent-watch
 tw_added=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
@@ -275,7 +275,7 @@ torrent_watch_check() {
   password=$(compose logs --no-color "$qbt_service" |
     sed -n 's/.*temporary password is provided for this session: //p' | tail -n 1)
   [ -n "$password" ] || fail "qBittorrent logged no temporary password"
-  # A finished torrent under its category, made as in qbittorrent_check, for the poll to switch to forced seeding.
+  # A finished torrent outside its category, made as in qbittorrent_check, for the poll to switch to forced seeding.
   qbt_api --data-urlencode username=admin --data-urlencode "password=$password" "$qbt_url/api/v2/auth/login" >/dev/null
   compose exec -T "$qbt_service" sh -c \
     'mkdir -p /downloads/smoke-seed && head -c 1048576 /dev/urandom >/downloads/smoke-seed/weights.bin' </dev/null
@@ -287,8 +287,6 @@ torrent_watch_check() {
     sleep 1
   done
   [[ $out == *'"name":"smoke-seed"'* ]] || fail "qBittorrent isn't seeding torrent-watch's test torrent: $out"
-  qbt_api -d category=watch -d savePath=/downloads/watch "$qbt_url/api/v2/torrents/createCategory" >/dev/null
-  qbt_api -d hashes=all -d category=watch "$qbt_url/api/v2/torrents/setCategory" >/dev/null
   out=$(compose exec -T -e "SMOKE_PASSWORD=$password" -e "SMOKE_ADDED=$tw_added" "$tw_service" \
     python -I - 2>&1 <<'PYTHON'
 import json
@@ -367,7 +365,7 @@ PYTHON
     [[ ! $out =~ $forced ]] || break
     sleep 1
   done
-  [[ $out =~ $forced ]] || fail "torrent-watch didn't switch its finished torrent to forced seeding: $out"
+  [[ $out =~ $forced ]] || fail "torrent-watch didn't switch a finished torrent to forced seeding: $out"
   [ "$(printf '%s' "$out" | grep -o forcedUP | wc -l)" -eq 1 ] ||
     fail "torrent-watch forced a torrent that hasn't finished: $out"
   qbt_api -d hashes=all -d deleteFiles=true "$qbt_url/api/v2/torrents/delete" >/dev/null

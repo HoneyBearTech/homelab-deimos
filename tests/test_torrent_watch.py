@@ -312,29 +312,53 @@ def test_with_space_it_stops_nothing(watching: tuple[Site, tw.Config]) -> None:
     assert stand_in.stopped == []
 
 
-def own_torrent(**fields: object) -> dict[str, object]:
+def a_torrent(**fields: object) -> dict[str, object]:
     return {"category": tw.CATEGORY, "total_size": GB, "amount_left": 0, "state": "stalledUP", **fields}
 
 
 @pytest.mark.parametrize("state", sorted(tw.SEEDING_STATES))
 def test_a_finished_torrent_is_switched_to_forced_seeding(watching: tuple[Site, tw.Config], state: str) -> None:
     stand_in, config = watching
-    stand_in.torrents = {"a" * 40: own_torrent(state=state)}
+    stand_in.torrents = {"a" * 40: a_torrent(state=state)}
     run(config)
     assert stand_in.forced == ["a" * 40]
+
+
+@pytest.mark.parametrize("category", ["", "other", tw.CATEGORY])
+def test_forced_seeding_covers_every_torrent_whatever_its_category(
+    watching: tuple[Site, tw.Config], category: str
+) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {"a" * 40: a_torrent(category=category)}
+    run(config)
+    assert stand_in.forced == ["a" * 40]
+
+
+def test_low_space_still_stops_only_its_own_downloads_though_forcing_covers_every_torrent(
+    watching: tuple[Site, tw.Config],
+) -> None:
+    stand_in, config = watching
+    stand_in.free = 100 * GB
+    stand_in.torrents = {
+        "a" * 40: a_torrent(category="", state="downloading", amount_left=GB),
+        "b" * 40: a_torrent(category=""),
+    }
+    run(config)
+    assert stand_in.stopped == []
+    assert stand_in.forced == ["b" * 40]
 
 
 def test_forced_seeding_happens_once_so_a_torrent_switched_back_by_hand_stays_so(
     watching: tuple[Site, tw.Config],
 ) -> None:
     stand_in, config = watching
-    stand_in.torrents = {"a" * 40: own_torrent()}
+    stand_in.torrents = {"a" * 40: a_torrent()}
     run(config)
     run(config)
     assert stand_in.forced == ["a" * 40]
     assert state_of(config)["forced"] == ["a" * 40]
     # One that finishes later is still switched.
-    stand_in.torrents["b" * 40] = own_torrent(state="uploading")
+    stand_in.torrents["b" * 40] = a_torrent(state="uploading")
     run(config)
     assert stand_in.forced == ["a" * 40, "b" * 40]
 
@@ -343,14 +367,11 @@ def test_forced_seeding_happens_once_so_a_torrent_switched_back_by_hand_stays_so
     "torrent",
     [
         # A magnet link with no metadata yet: nothing left to download, but nothing to seed either.
-        own_torrent(state="metaDL", total_size=-1),
-        own_torrent(state="downloading", amount_left=GB),
-        own_torrent(state="stoppedUP"),
-        own_torrent(state="forcedUP"),
-        own_torrent(state="error"),
-        # Someone else's: the owner's own uploads and manual additions are left alone.
-        own_torrent(category=""),
-        own_torrent(category="other"),
+        a_torrent(state="metaDL", total_size=-1),
+        a_torrent(state="downloading", amount_left=GB),
+        a_torrent(state="stoppedUP"),
+        a_torrent(state="forcedUP"),
+        a_torrent(state="error"),
     ],
 )
 def test_forced_seeding_leaves_everything_else_alone(watching: tuple[Site, tw.Config], torrent: dict) -> None:
@@ -364,7 +385,7 @@ def test_failing_to_force_seeding_doesnt_hold_up_the_poll_and_is_tried_again(
     watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
 ) -> None:
     stand_in, config = watching
-    stand_in.torrents = {"a" * 40: own_torrent()}
+    stand_in.torrents = {"a" * 40: a_torrent()}
     stand_in.force_status = HTTPStatus.BAD_GATEWAY
     stand_in.search["qwen"].append(row("a/new", NEW))
     stand_in.models["a/new"] = {"license": "mit", "sizeBytes": GB}
