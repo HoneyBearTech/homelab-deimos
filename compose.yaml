@@ -338,13 +338,14 @@ services:
       TZ: ${TZ:?set TZ in .env}
       TORRENT_WATCH_INDEX_URL: ${TORRENT_WATCH_INDEX_URL:-}
       TORRENT_WATCH_TERMS: ${TORRENT_WATCH_TERMS:-}
+      TORRENT_WATCH_AT_RISK: ${TORRENT_WATCH_AT_RISK:-false}
       TORRENT_WATCH_MAX_TORRENT_GB: ${TORRENT_WATCH_MAX_TORRENT_GB:-100}
       TORRENT_WATCH_MAX_TOTAL_GB: ${TORRENT_WATCH_MAX_TOTAL_GB:-500}
       TORRENT_WATCH_MIN_FREE_GB: ${TORRENT_WATCH_MIN_FREE_GB:-500}
       TORRENT_WATCH_QBITTORRENT_USERNAME: ${TORRENT_WATCH_QBITTORRENT_USERNAME:-admin}
       # The script's checksum (a test checks it): Compose doesn't recreate a container when only a file mounted into it
       # changes, and a pull replaces that file, which leaves the running container's mount pointing at nothing.
-      TORRENT_WATCH_SCRIPT_SHA256: ef426c60ab3dc10e423373e9200f4ec4bd3d6eafa404e1837b9b215fba10202a
+      TORRENT_WATCH_SCRIPT_SHA256: 588bb2efc951e8f61412be4c460fd6c689b5ddd57de68216c13da7a53dd05623
     labels:
       autoheal: "true"
     volumes:

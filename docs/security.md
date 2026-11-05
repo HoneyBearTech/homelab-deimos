@@ -99,9 +99,9 @@ offer nothing else. Without capabilities that root can only reach what it owns (
   the host is on, so check the address the client reports ([installing.md](installing.md#qbittorrent)), and give it
   only files you're free to share. It is also the one service here that accepts connections from the internet: only its
   peer port may be forwarded, never its web UI. A file it downloads is untrusted until you've checked it.
-- **What torrent-watch adds.** It adds torrents with nobody looking, switches every finished torrent in qBittorrent to forced
+- **What torrent-watch adds.** It adds torrents with nobody looking, every torrent the index calls at risk if asked to, switches every finished torrent in qBittorrent to forced
   seeding, and takes the model index's word for each one's
-  licence and size: its limits protect the disk, not what's in the files, and qBittorrent's piece hashes come from that
+  licence and size, and leaves out uncensored models by their names alone: its limits protect the disk, not what's in the files, and qBittorrent's piece hashes come from that
   same index. Whoever controls the index can choose what this host downloads and seeds, within those limits. Its
   password for qBittorrent gives full control of qBittorrent; it is a Docker secret, not in the backups, and the
   service publishes no port.

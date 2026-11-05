@@ -41,11 +41,37 @@ class Site:
         self.stopped: list[str] = []
         self.forced: list[str] = []
         self.force_status = HTTPStatus.OK
+        self.catalogue: dict[str, list[dict]] = {}
+        self.torrent_answers: dict[str, dict] = {}
+        self.catalogue_answer: str | None = None
         self.index_status = HTTPStatus.OK
         self.add_answer = '{"failure_count":0,"success_count":1}'
         self.refusal = HTTPStatus.UNAUTHORIZED
 
-    def answer(self, path: str, form: dict[str, str]) -> tuple[HTTPStatus, str, dict[str, str]]:  # noqa: PLR0911 # one per route
+    def catalogue_page(self, query: dict[str, list[str]]) -> tuple[HTTPStatus, str, dict[str, str]]:
+        if self.catalogue_answer is not None:
+            return self.index_status, self.catalogue_answer, {}
+        models = self.catalogue.get(query["license"][0], [])
+        start = int(query.get("cursor", ["0"])[0])
+        next_start = start + 2
+        cursor = str(next_start) if next_start < len(models) else None
+        return self.index_status, json.dumps({"models": models[start:next_start], "nextCursor": cursor}), {}
+
+    def list_at_risk(self, repo: str, infohash: str, gigabytes: int = 1, **fields: object) -> None:
+        license_name = str(fields.pop("license", "mit"))
+        model = {
+            "id": repo,
+            "license": license_name,
+            "sizeBytes": gigabytes * GB,
+            "seeded": True,
+            "seed": 0,
+            "hfBacked": True,
+            **fields,
+        }
+        self.catalogue.setdefault(license_name, []).append(model)
+        self.torrent_answers[repo] = {"magnet": f"magnet:?xt=urn:btih:{infohash}&ws=https%3A%2F%2Fi", "seeders": 0}
+
+    def answer(self, path: str, form: dict[str, str]) -> tuple[HTTPStatus, str, dict[str, str]]:  # noqa: C901, PLR0911 # one per route
         url = urllib.parse.urlsplit(path)
         self.requests.append(path)
         if url.path.startswith("/s/"):
@@ -53,6 +79,11 @@ class Site:
             lines = self.search.get(term)
             text = "\n".join(lines) + "\n" if lines else f'{tw.NO_MATCH} "{term}" yet.\n'
             return self.index_status, text, {}
+        if url.path == "/api/models" and "license=" in url.query:
+            return self.catalogue_page(urllib.parse.parse_qs(url.query))
+        if url.path == "/api/torrents":
+            repo = urllib.parse.parse_qs(url.query)["repo"][0]
+            return self.index_status, json.dumps(self.torrent_answers.get(repo, {"magnet": None})), {}
         if url.path == "/api/models":
             repo = urllib.parse.parse_qs(url.query)["q"][0]
             models = [{"id": repo, **self.models[repo]}] if repo in self.models else []
@@ -399,6 +430,240 @@ def test_failing_to_force_seeding_doesnt_hold_up_the_poll_and_is_tried_again(
     assert stand_in.forced == ["a" * 40]
 
 
+@pytest.fixture
+def at_risk(site: tuple[Site, str], tmp_path: Path) -> tuple[Site, tw.Config]:
+    """A config that watches what is at risk, and no terms."""
+    stand_in, url = site
+    return stand_in, make_config(url, tmp_path)._replace(at_risk=True)
+
+
+def scans(stand_in: Site) -> int:
+    return sum(path.startswith("/api/models?license=") and "cursor" not in path for path in stand_in.requests)
+
+
+def test_at_risk_is_off_unless_asked_for(watching: tuple[Site, tw.Config]) -> None:
+    stand_in, config = watching
+    stand_in.list_at_risk("a/risky", NEW)
+    run(config)
+    assert stand_in.added == []
+    assert scans(stand_in) == 0
+
+
+def test_at_risk_adds_what_is_there_already_smallest_first_under_its_category(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/large", OLD, 9)
+    stand_in.list_at_risk("a/small", NEW, 1, license="apache-2.0")
+    stand_in.list_at_risk("a/medium", NEXT, 5)
+    run(config)
+    assert magnets(stand_in) == [NEW, NEXT, OLD]
+    assert {form["category"] for form in stand_in.added} == {tw.CATEGORY}
+    assert state_of(config)["done"][NEW] == {"repo": "a/small", "why": "added", "size": GB}
+
+
+def test_at_risk_follows_the_list_across_its_pages_for_every_allowed_licence(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    for number in range(5):
+        stand_in.list_at_risk(f"a/mit{number}", f"{number + 10:040x}")
+    stand_in.list_at_risk("a/open", f"{50:040x}", license="openmdw-1.1")
+    stand_in.list_at_risk("a/free", f"{60:040x}", license="wtfpl")
+    run(config)
+    models = state_of(config)["at_risk"]["models"]
+    assert {model["repo"] for model in models} == {f"a/mit{number}" for number in range(5)} | {"a/open", "a/free"}
+    assert sum("license=mit" in path for path in stand_in.requests) == 3
+    assert scans(stand_in) == len(tw.ALLOWED_LICENSES)
+
+
+def test_at_risk_stops_paging_a_list_that_never_ends(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.catalogue_answer = json.dumps({"models": [], "nextCursor": "again"})
+    run(config)
+    pages = sum(path.startswith("/api/models?license=") for path in stand_in.requests)
+    assert pages == tw.MAX_PAGES_PER_LICENSE * len(tw.ALLOWED_LICENSES)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"seed": 1},
+        {"seed": None},
+        {"seed": False},
+        {"seeded": False},
+        {"hfBacked": False},
+        {"hfBacked": None},
+    ],
+)
+def test_at_risk_means_a_torrent_no_seeders_and_its_source_still_there(
+    at_risk: tuple[Site, tw.Config], fields: dict
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/fine", NEW, 1, **fields)
+    run(config)
+    assert stand_in.added == []
+    assert state_of(config)["at_risk"]["models"] == []
+
+
+def test_at_risk_leaves_out_a_licence_the_filter_let_through(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/other", NEW)
+    stand_in.catalogue["mit"][0]["license"] = "other"
+    run(config)
+    assert stand_in.added == []
+
+
+def test_at_risk_keeps_to_the_limits_and_says_so(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    config = config._replace(max_torrent=10 * GB, max_total=6 * GB)
+    stand_in.list_at_risk("a/fits", NEW, 5)
+    stand_in.list_at_risk("a/over-total", NEXT, 7)
+    stand_in.list_at_risk("a/over-each", OLD, 11)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+    assert magnets(stand_in) == [NEW]
+    assert any("3 listed, 2 kept out by the limits, 0 waiting" in message for message in caplog.messages)
+
+
+def test_at_risk_counts_the_free_space_of_what_it_just_added(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.free = 510 * GB
+    stand_in.list_at_risk("a/first", NEW, 8)
+    stand_in.list_at_risk("a/second", NEXT, 8)
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+def test_at_risk_adds_a_few_per_poll_from_the_list_it_has_and_asks_again_when_it_is_old(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    new = [f"{number:040x}" for number in range(100, 105)]
+    for number, infohash in enumerate(new):
+        stand_in.list_at_risk(f"a/{number}", infohash, number + 1)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+    assert magnets(stand_in) == new[: tw.MAX_ADDS_PER_POLL]
+    assert any("5 listed, 0 kept out by the limits, 2 waiting" in message for message in caplog.messages)
+    asked = scans(stand_in)
+    run(config)
+    assert magnets(stand_in) == new
+    assert scans(stand_in) == asked
+    state = state_of(config)
+    state["at_risk"]["scanned"] -= tw.AT_RISK_RESCAN_SECONDS
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert scans(stand_in) == 2 * asked
+
+
+def test_a_torrent_removed_from_qbittorrent_isnt_added_again_by_at_risk(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    run(config)
+    state = state_of(config)
+    state["at_risk"]["scanned"] = 0
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+def test_at_risk_takes_what_a_term_only_recorded_at_its_first_run(site: tuple[Site, str], tmp_path: Path) -> None:
+    stand_in, url = site
+    stand_in.search["qwen"] = [row("a/risky", NEW)]
+    config = make_config(url, tmp_path, "qwen")
+    run(config)
+    assert stand_in.added == []
+    stand_in.list_at_risk("a/risky", NEW)
+    run(config._replace(at_risk=True))
+    assert magnets(stand_in) == [NEW]
+
+
+def test_a_model_already_in_qbittorrent_is_left_alone_by_at_risk(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/mine", NEW)
+    stand_in.torrents = {"f" * 40: {"infohash_v1": NEW, "category": "", "total_size": GB, "amount_left": 0}}
+    run(config)
+    assert stand_in.added == []
+    assert state_of(config)["done"][NEW]["why"] == "already in qBittorrent"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"magnet": None, "terms": {"id": "x"}, "seeders": 0},
+        {"magnet": f"magnet:?xt=urn:btih:{NEW}", "terms": {"id": "x"}, "seeders": 0},
+        {"magnet": f"magnet:?xt=urn:btih:{NEW}", "seeders": 2},
+        {"magnet": f"magnet:?xt=urn:btih:{NEW}"},
+        {"magnet": "https://elsewhere/file.torrent", "seeders": 0},
+        {"magnet": 1, "seeders": 0},
+    ],
+)
+def test_at_risk_drops_a_model_whose_torrent_isnt_as_listed_any_more(
+    at_risk: tuple[Site, tw.Config], answer: dict
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    stand_in.torrent_answers["a/risky"] = answer
+    run(config)
+    assert stand_in.added == []
+    assert state_of(config)["at_risk"]["models"] == []
+
+
+@pytest.mark.parametrize("answer", ["not json", "[]", '{"models": 1}', '{"models": [1]}', '{"other": 1}'])
+def test_at_risk_list_it_cant_read_adds_nothing_and_keeps_the_last_one(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture, answer: str
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/first", NEW)
+    stand_in.list_at_risk("a/second", NEXT)
+    config = config._replace(max_total=GB)
+    run(config)
+    assert magnets(stand_in) == [NEW]
+    state = state_of(config)
+    state["at_risk"]["scanned"] = 0
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    stand_in.catalogue_answer = answer
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any("skipping the torrents at risk" in message for message in caplog.messages)
+    assert magnets(stand_in) == [NEW]
+    assert [model["repo"] for model in state_of(config)["at_risk"]["models"]] == ["a/first", "a/second"]
+
+
+def test_at_risk_torrent_it_cant_read_is_tried_again(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    answer = stand_in.torrent_answers.pop("a/risky")
+    original = stand_in.answer
+
+    def garbled(path: str, form: dict[str, str]) -> tuple[HTTPStatus, str, dict[str, str]]:
+        if path.startswith("/api/torrents"):
+            return HTTPStatus.OK, "not json", {}
+        return original(path, form)
+
+    stand_in.answer = garbled  # type: ignore[method-assign]
+    run(config)
+    assert stand_in.added == []
+    assert [model["repo"] for model in state_of(config)["at_risk"]["models"]] == ["a/risky"]
+    stand_in.answer = original  # type: ignore[method-assign]
+    stand_in.torrent_answers["a/risky"] = answer
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+def test_a_poll_with_at_risk_and_no_terms_still_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tw, "HEARTBEAT", tmp_path / "heartbeat")
+    ran = []
+    monkeypatch.setattr(tw.Watch, "run", lambda _self: ran.append(1))
+    tw.poll(
+        {
+            "TORRENT_WATCH_AT_RISK": "true",
+            "TORRENT_WATCH_INDEX_URL": "https://i",
+            "TORRENT_WATCH_STATE_FILE": str(tmp_path / "state.json"),
+        }
+    )
+    assert ran == [1]
+
+
 @pytest.mark.parametrize("free", [0, None, "1000"])
 def test_no_free_space_figure_means_nothing_is_added_or_stopped(
     watching: tuple[Site, tw.Config], free: object, monkeypatch: pytest.MonkeyPatch
@@ -527,6 +792,43 @@ def test_a_term_with_a_slash_keeps_only_that_authors_models(site: tuple[Site, st
     assert magnets(stand_in) == [OLD]
 
 
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "a/Qwen3.8-27B-Uncensored-GGUF",
+        "a/model-ABLITERATED",
+        "a/model-heretic-v2",
+        "a/Decensored-model",
+        "a/model-OBLITERATUS",
+        "a/Obliterated_model",
+        "uncensored-labs/model",
+    ],
+)
+def test_an_uncensored_model_is_never_added_whichever_way_it_is_found(
+    site: tuple[Site, str], tmp_path: Path, repo: str
+) -> None:
+    stand_in, url = site
+    config = make_config(url, tmp_path, "qwen")._replace(at_risk=True)
+    run(config)
+    stand_in.search["qwen"] = [row(repo, NEW)]
+    stand_in.models[repo] = {"license": "mit", "sizeBytes": GB}
+    stand_in.list_at_risk(repo, NEW)
+    state = state_of(config)
+    state["at_risk"]["scanned"] = 0
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert stand_in.added == []
+    assert state_of(config)["at_risk"]["models"] == []
+    assert NEW not in state_of(config)["pending"]
+
+
+def test_a_similar_name_isnt_taken_for_an_uncensored_one(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/censorship-classifier", NEW)
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
 def test_a_search_with_many_rows_warns_that_the_term_is_broad(
     watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -598,6 +900,8 @@ def test_settings_left_empty_by_compose_take_the_defaults() -> None:
         ({"TORRENT_WATCH_TERMS": "a"}, "must be an https"),
         ({"TORRENT_WATCH_TERMS": "a", "TORRENT_WATCH_INDEX_URL": "http://i"}, "must be an https"),
         ({"TORRENT_WATCH_TERMS": "/", "TORRENT_WATCH_INDEX_URL": "https://i"}, "names no author"),
+        ({"TORRENT_WATCH_AT_RISK": "true"}, "must be an https"),
+        ({"TORRENT_WATCH_AT_RISK": "yes"}, "true or false"),
         ({"TORRENT_WATCH_MIN_FREE_GB": "0"}, "above zero"),
         ({"TORRENT_WATCH_MAX_TOTAL_GB": "lots"}, "above zero"),
         ({"TORRENT_WATCH_MAX_TORRENT_GB": "-1"}, "above zero"),
@@ -612,7 +916,7 @@ def test_settings_that_cant_be_right_are_refused(settings: dict[str, str], expec
 def test_a_damaged_state_file_starts_again(tmp_path: Path, content: str) -> None:
     path = tmp_path / "state.json"
     path.write_text(content, encoding="utf-8")
-    assert tw.load_state(path) == {"terms": [], "done": {}, "pending": {}, "forced": []}
+    assert tw.load_state(path) == {"terms": [], "done": {}, "pending": {}, "forced": [], "at_risk": {}}
 
 
 def test_saving_the_state_leaves_no_temporary_file(tmp_path: Path) -> None:
