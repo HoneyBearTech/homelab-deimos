@@ -270,7 +270,7 @@ services:
     # linuxserver.io's version tag names qBittorrent and the libtorrent it is built on: 2.1, whose disk I/O reads and
     # writes files instead of mapping them into memory, which suits a network share (docs/dependencies.md#qbittorrent).
     # Dependabot follows this tag's rebuilds but can't read it as a version: a new qBittorrent is bumped by hand.
-    image: lscr.io/linuxserver/qbittorrent:version-5.3.0_v2.1.2@sha256:75ecbb1c89ab7b0a21c4bde40b4820e4f1649d2d56d83b91913422155e8d2a5f
+    image: lscr.io/linuxserver/qbittorrent:version-5.3.0_v2.1.2@sha256:05c1454f9a32967affc1f34f67f8cc0cc57dd805dca45489fe797095a6286556
     container_name: qbittorrent-direct
     # Its init (s6-overlay) runs as root: it takes ownership of the data for PUID:PGID (CHOWN), runs the app as that
     # user (SETUID, SETGID) and stops it cleanly on shutdown (KILL: without it the app is killed after the timeout).
