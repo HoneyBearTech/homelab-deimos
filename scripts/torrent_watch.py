@@ -59,7 +59,7 @@ POLL_SECONDS = 1800
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
 # A second limit on top of the sizes, in case the index ever lists a run of torrents as new by mistake.
 MAX_ADDS_PER_POLL = 3
-# How often it asks the index for the whole list of models, about 75 requests so far; each poll adds from the last answer.
+# How often it asks the index for the whole list, about 75 requests so far; each poll adds from the last answer.
 AT_RISK_RESCAN_SECONDS = 6 * 3600
 # The longest list so far took 33 pages for one licence, and lengths vary: this only guards against one that never ends.
 MAX_PAGES_PER_LICENSE = 100
