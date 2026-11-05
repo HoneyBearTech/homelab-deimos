@@ -271,9 +271,10 @@ qBittorrent must be under `/downloads`: anything else is lost when the container
    proxy support with the proxy's address in the trusted proxies list. Without that, repeated failed sign-ins ban the
    proxy, and so everyone who uses it.
 
-**To share files**, copy them into `TORRENTS_PATH`, then use Tools → Torrent Creator with a source path under
-`/downloads`, and keep it set to start seeding. It offers the torrent file to download, and a torrent's context menu
-copies its magnet link.
+**To share files**, copy them into `TORRENTS_PATH`, then open Tools → Torrent Creator → Create New Torrent. Type the
+source as its path in the container, under `/downloads`, and tick **Start seeding immediately**, which is off by
+default. Export Torrent in the creator's list gives you the torrent file, and a torrent's context menu in the main list
+has Copy → Magnet link.
 
 **To download**, use File → Add Torrent Link, which takes magnet links as well as URLs of torrent files. To have a
 browser open magnet links in it, use Tools → Register to handle magnet links, which browsers allow only over HTTPS, so
