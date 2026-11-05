@@ -112,7 +112,8 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 - **torrent-watch**: adds new torrents from a model index to qBittorrent by itself, for the watch terms you set, within
   limits per torrent and in total and a floor of free space on the disk, and only under licences with no terms to accept.
-  What a term matches when it first runs stays out. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
+  What a term matches when it first runs stays out. `TORRENT_WATCH_AT_RISK=true` also adds what the index counts as at
+  risk, smallest first, whether new or not, within the same limits. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
   It is this repository's own script, on the standard library alone,
   in Python's image, with no ports and a read-only root. The smoke test runs its real poll against qBittorrent.
 - **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port

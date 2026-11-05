@@ -288,7 +288,7 @@ through the reverse proxy.
 torrent-watch adds new torrents from a model index to qBittorrent by itself. Every half hour it runs each of your watch
 terms through the index's search and adds what it hasn't seen before, under the category `watch`, in `/downloads/watch`.
 What a term matches the first time it runs is only recorded, so only torrents listed after that are added. With no
-terms it does nothing.
+terms, and no [torrents at risk](#torrent-watch) asked for, it does nothing.
 
 Nobody is asked before a torrent is added, and it seeds from the same public IP address as everything else in
 qBittorrent ([above](#qbittorrent)), until you remove it. So a torrent is added only when all of these hold:
@@ -329,6 +329,15 @@ you've set one ([above](#qbittorrent)), so that is what leaves room for everythi
 3. **Read its log**: `docker compose logs torrent-watch`. A new term says how many torrents it already matches, and
    each torrent it adds or leaves out gets a line.
 
+**To take what is at risk**, set `TORRENT_WATCH_AT_RISK=true`, with or without watch terms. At risk is the index's own
+word: a torrent with no observed seeders whose source is still available. What is at risk now is the point, so nothing
+is only recorded first, and it takes the smallest first, to save the most torrents per GB. The rules above still hold, so
+expect it to stop at your limits long before it runs out of torrents: the list can come to many terabytes. It asks for
+the whole list every 6 hours, about 75 requests over several minutes, and adds from that answer at each poll. The index's
+list has ended at different lengths from one run to the next, so what it sees may not be everything at risk. With no
+seeders the data comes from the index's web seed, so speeds vary, and a download can stall for as long as that does. One
+that never finishes keeps counting toward the limits until you remove it.
+
 **Watch terms** are separated by commas. Words (`qwen gguf`) match any model with those words in its name, whoever
 made it; one author with a slash after it (`someone/`) keeps only that author's models. Keep them narrow: the index's
 search stops at about 90 rows, best-seeded first, so a new torrent with no seeders can miss a long list. The log warns
@@ -336,7 +345,9 @@ about a term that matches 75 or more.
 
 **The index** must answer `GET /s/<words>` (words joined with `+`) with one line per torrent, starting with
 `<author>/<model>` and ending with its magnet link, and `GET /api/models?q=<author>/<model>` with JSON whose `models`
-give each one's `id`, `license` and `sizeBytes`. If it stops answering like that, nothing is added, and the log says
+give each one's `id`, `license` and `sizeBytes`. For torrents at risk, `GET /api/models?license=<licence>` must list them
+page by page (`nextCursor`, `seeded`, `seed`, `hfBacked`), and `GET /api/torrents?repo=<author>/<model>` give `magnet` and
+`seeders`. If it stops answering like that, nothing is added, and the log says
 why. Its word for a licence is all this has to go on: read the licence before relying on a model.
 
 ## Scheduled backups

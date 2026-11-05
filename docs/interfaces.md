@@ -22,6 +22,7 @@ setting marked required stops `docker compose` with an error naming it when it's
 | `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there, and so do the links social-to-mealie shows after an import. |
 | `TORRENT_WATCH_INDEX_URL` | no | `https://index.example.com` | The model index torrent-watch reads, https only. Needed once there are watch terms. |
 | `TORRENT_WATCH_TERMS` | no | empty | What it watches, separated by commas: words to search for, or one author with a slash after it ([installing.md](installing.md#torrent-watch)). Empty: it does nothing. |
+| `TORRENT_WATCH_AT_RISK` | no | `false` | `true` also adds what the index counts as at risk, smallest first, whether new or not ([installing.md](installing.md#torrent-watch)). |
 | `TORRENT_WATCH_MAX_TORRENT_GB` | no | `100` | It adds nothing larger than this, in GB. |
 | `TORRENT_WATCH_MAX_TOTAL_GB` | no | `500` | It adds nothing that would take what its category holds in qBittorrent above this, in GB. |
 | `TORRENT_WATCH_MIN_FREE_GB` | no | `500` | The free space it keeps on the torrents' disk, in GB: it adds nothing that would go below this, and stops its own downloads if the disk falls below it anyway. |

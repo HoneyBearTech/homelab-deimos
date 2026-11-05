@@ -11,6 +11,11 @@ downloading has finished. Anything it can't tell counts as a no, and is looked a
 falls below that free space anyway, its own torrents that are still downloading are stopped, and stay stopped until
 someone starts them again.
 
+With ``TORRENT_WATCH_AT_RISK`` it also adds what the index counts as at risk: a torrent with no observed seeders whose
+source is still available, smallest first, under the same rules. Nothing is recorded first for these, since what is at
+risk now is the point. The index's list has ended at different lengths from one run to the next, so what it sees may not
+be everything at risk.
+
 Once any torrent in qBittorrent has finished, not only one of its own, the next poll switches it to forced seeding, so
 that qBittorrent's queue limits don't stop it seeding. That happens once per torrent: one switched back by hand, or
 stopped, stays that way.
@@ -54,6 +59,10 @@ POLL_SECONDS = 1800
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
 # A second limit on top of the sizes, in case the index ever lists a run of torrents as new by mistake.
 MAX_ADDS_PER_POLL = 3
+# How often it asks the index for the whole list of models, about 75 requests so far; each poll adds from the last answer.
+AT_RISK_RESCAN_SECONDS = 6 * 3600
+# The longest list so far took 33 pages for one licence, and lengths vary: this only guards against one that never ends.
+MAX_PAGES_PER_LICENSE = 100
 # The search stops at about 90 rows, best-seeded first, so a new torrent with no seeders can miss a longer list.
 BROAD_TERM_ROWS = 75
 TIMEOUT_SECONDS = 30
@@ -103,6 +112,7 @@ class Config(NamedTuple):
     max_torrent: int
     max_total: int
     min_free: int
+    at_risk: bool = False
     pause_seconds: float = 1.0
 
 
@@ -142,7 +152,11 @@ def load_config(env: Mapping[str, str]) -> Config:
     """Read the settings; an empty list of terms is fine, and means there's nothing to do."""
     terms = tuple(parse_term(text) for text in env.get("TORRENT_WATCH_TERMS", "").split(",") if text.strip())
     index_url = env.get("TORRENT_WATCH_INDEX_URL", "").rstrip("/")
-    if terms and not index_url.startswith("https://"):
+    at_risk = env.get("TORRENT_WATCH_AT_RISK") or "false"
+    if at_risk not in {"true", "false"}:
+        message = f"TORRENT_WATCH_AT_RISK must be true or false, not {at_risk!r}"
+        raise WatchError(message)
+    if (terms or at_risk == "true") and not index_url.startswith("https://"):
         message = f"TORRENT_WATCH_INDEX_URL must be an https:// address, not {index_url!r}"
         raise WatchError(message)
     return Config(
@@ -155,6 +169,7 @@ def load_config(env: Mapping[str, str]) -> Config:
         max_torrent=gigabytes(env, "TORRENT_WATCH_MAX_TORRENT_GB", "100"),
         max_total=gigabytes(env, "TORRENT_WATCH_MAX_TOTAL_GB", "500"),
         min_free=gigabytes(env, "TORRENT_WATCH_MIN_FREE_GB", "500"),
+        at_risk=at_risk == "true",
     )
 
 
@@ -177,6 +192,21 @@ def read_url(opener: urllib.request.OpenerDirector, url: str, body: bytes | None
 def fetch(url: str) -> str:
     """Get a page of the index as text."""
     return read_url(urllib.request.build_opener(), url, None, "the index")
+
+
+def is_at_risk(model: dict[str, Any]) -> bool:
+    """Whether the index counts a model as at risk: a torrent, no observed seeders, its source still available."""
+    seed = model.get("seed")
+    return model.get("seeded") is True and type(seed) is int and seed == 0 and model.get("hfBacked") is True
+
+
+def read_details(model: dict[str, Any]) -> Details:
+    """Read a model's licence and size, each empty if the index doesn't give it."""
+    license_name, size = model.get("license"), model.get("sizeBytes")
+    return Details(
+        license_name.lower() if isinstance(license_name, str) else None,
+        size if type(size) is int and size > 0 else None,
+    )
 
 
 def parse_search(text: str) -> list[Row]:
@@ -221,11 +251,40 @@ class Index:
         except (ValueError, KeyError, TypeError, AttributeError) as err:
             log.warning("can't read the details of %s: %r", repo, err)
             return Details(None, None)
-        license_name, size = model.get("license"), model.get("sizeBytes")
-        return Details(
-            license_name.lower() if isinstance(license_name, str) else None,
-            size if type(size) is int and size > 0 else None,
-        )
+        return read_details(model)
+
+    def at_risk(self, pause_seconds: float) -> list[dict[str, Any]]:
+        """List the models at risk under the allowed licences, smallest first; a list it can't read raises."""
+        found = {}
+        try:
+            for license_name in sorted(ALLOWED_LICENSES):
+                cursor = None
+                for _ in range(MAX_PAGES_PER_LICENSE):
+                    query = {"license": license_name, **({"cursor": cursor} if cursor else {})}
+                    page = json.loads(self.get(f"{self.base_url}/api/models?{urllib.parse.urlencode(query)}"))
+                    for model in filter(is_at_risk, page["models"]):
+                        found[model["id"]] = {"repo": model["id"], **read_details(model)._asdict()}
+                    cursor = page.get("nextCursor")
+                    if not cursor:
+                        break
+                    time.sleep(pause_seconds)
+        except (ValueError, KeyError, TypeError, AttributeError) as err:
+            message = f"can't read the index's list of models: {err!r}"
+            raise WatchError(message) from err
+        return sorted(found.values(), key=lambda model: model["size"] or 0)
+
+    def at_risk_torrent(self, repo: str) -> Row | None:
+        """Return a model's torrent if it is still at risk with no terms to accept, or None if it isn't."""
+        try:
+            answer = json.loads(self.get(f"{self.base_url}/api/torrents?{urllib.parse.urlencode({'repo': repo})}"))
+            magnet, seeders, terms = answer.get("magnet"), answer.get("seeders"), answer.get("terms")
+        except (ValueError, AttributeError) as err:
+            message = f"can't read the torrent of {repo}: {err!r}"
+            raise WatchError(message) from err
+        match = MAGNET_RE.match(magnet) if isinstance(magnet, str) else None
+        if match is None or terms or seeders != 0:
+            return None
+        return Row(repo, match["hash"].lower(), magnet)
 
 
 class Qbittorrent:
@@ -346,6 +405,7 @@ def load_state(path: Path) -> dict[str, Any]:
         "done": state.get("done", {}),
         "pending": state.get("pending", {}),
         "forced": state.get("forced", []),
+        "at_risk": state.get("at_risk", {}),
     }
 
 
@@ -401,10 +461,14 @@ class Watch:
                 "reason": reason,
             }
             return snapshot
+        return self.add(row, details, snapshot)
+
+    def add(self, row: Row, details: Details, snapshot: Snapshot) -> Snapshot:
+        """Add a torrent that may be added, record it, and return the snapshot with it counted."""
         size = details.size or 0
         self.client.add(row.magnet)
         self.added += 1
-        pending.pop(row.infohash, None)
+        self.state["pending"].pop(row.infohash, None)
         self.state["done"][row.infohash] = {"repo": row.repo, "why": "added", "size": size}
         log.info("added %s (%s, %.1f GB)", row.repo, details.license, size / GB)
         return snapshot._replace(total=snapshot.total + size, left=snapshot.left + size)
@@ -425,6 +489,44 @@ class Watch:
             elif self.added < MAX_ADDS_PER_POLL:
                 snapshot = self.consider(row, snapshot)
         return snapshot
+
+    def at_risk_models(self) -> list[dict[str, Any]]:
+        """Return the models at risk, asking the index again once its last answer is old."""
+        known = self.state["at_risk"]
+        if time.time() - known.get("scanned", 0) >= AT_RISK_RESCAN_SECONDS:
+            known["models"] = self.index.at_risk(self.config.pause_seconds)
+            known["scanned"] = time.time()
+        return known["models"]
+
+    def take_at_risk(self, model: dict[str, Any], snapshot: Snapshot) -> Snapshot:
+        """Add one model at risk if it still is, and return the snapshot with it counted."""
+        row = self.index.at_risk_torrent(model["repo"])
+        if row is None:
+            log.info("leaving out %s: it has seeders now, or terms to accept, or no torrent", model["repo"])
+            self.state["at_risk"]["models"].remove(model)
+            return snapshot
+        if row.infohash in snapshot.known:
+            self.state["done"][row.infohash] = {"repo": row.repo, "why": "already in qBittorrent"}
+            return snapshot
+        return self.add(row, Details(model["license"], model["size"]), snapshot)
+
+    def run_at_risk(self, snapshot: Snapshot) -> None:
+        """Add what is at risk, smallest first, while the limits allow it."""
+        models = self.at_risk_models()
+        taken = {entry["repo"] for entry in self.state["done"].values() if entry.get("why") != "listed before"}
+        left_out = waiting = 0
+        for model in list(models):
+            if model["repo"] in taken:
+                continue
+            if refusal(Details(model["license"], model["size"]), self.config, snapshot):
+                left_out += 1
+            elif self.added >= MAX_ADDS_PER_POLL:
+                waiting += 1
+            else:
+                snapshot = self.take_at_risk(model, snapshot)
+        log.info(
+            "at risk: %d listed, %d kept out by the limits, %d waiting for a later poll", len(models), left_out, waiting
+        )
 
     def stop_if_short_of_space(self, snapshot: Snapshot) -> None:
         """Stop this script's own downloads if the share is below the free space asked for."""
@@ -464,6 +566,12 @@ class Watch:
             except WatchError as err:
                 log.warning("skipping %r for now: %s", term.text, err)
             save_state(self.config.state_file, self.state)
+        if self.config.at_risk:
+            try:
+                self.run_at_risk(snapshot)
+            except WatchError as err:
+                log.warning("skipping the torrents at risk for now: %s", err)
+        save_state(self.config.state_file, self.state)
 
 
 def poll(env: Mapping[str, str]) -> None:
@@ -471,8 +579,8 @@ def poll(env: Mapping[str, str]) -> None:
     HEARTBEAT.touch()
     try:
         config = load_config(env)
-        if not config.terms:
-            log.info("no watch terms set, so nothing to do")
+        if not config.terms and not config.at_risk:
+            log.info("no watch terms set and at-risk torrents off, so nothing to do")
             return
         client = Qbittorrent(config.qbittorrent_url, config.username, config.password_file)
         Watch(config, Index(config.index_url), client, load_state(config.state_file)).run()
