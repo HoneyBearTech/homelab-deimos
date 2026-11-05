@@ -9,7 +9,12 @@ A torrent is added only if the index names a licence in ``ALLOWED_LICENSES`` and
 per torrent and the limit for the category, and the share keeps the free space asked for once everything still
 downloading has finished. Anything it can't tell counts as a no, and is looked at again at the next poll. If the share
 falls below that free space anyway, its own torrents that are still downloading are stopped, and stay stopped until
-someone starts them again. Standard library only: compose.yaml runs it in a pinned Python image.
+someone starts them again.
+
+Once one of its torrents has finished, the next poll switches it to forced seeding, so that qBittorrent's queue limits
+don't stop it seeding. That happens once per torrent: one switched back by hand, or stopped, stays that way.
+
+Standard library only: compose.yaml runs it in a pinned Python image.
 """
 
 from __future__ import annotations
@@ -41,6 +46,9 @@ log = logging.getLogger("torrent-watch")
 ALLOWED_LICENSES = frozenset({"apache-2.0", "mit", "openmdw-1.1", "wtfpl"})
 CATEGORY = "watch"
 SAVE_PATH = "/downloads/watch"
+# A finished torrent seeding normally. Having nothing left to download isn't enough: so has a magnet link with no
+# metadata yet.
+SEEDING_STATES = frozenset({"queuedUP", "stalledUP", "uploading"})
 POLL_SECONDS = 1800
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
 # A second limit on top of the sizes, in case the index ever lists a run of torrents as new by mistake.
@@ -105,6 +113,7 @@ class Snapshot(NamedTuple):
     total: int
     left: int
     incomplete: tuple[str, ...]
+    seeding: tuple[str, ...]
 
 
 def parse_term(text: str) -> Term:
@@ -274,6 +283,10 @@ class Qbittorrent:
         """Stop these torrents."""
         self.call("torrents/stop", {"hashes": "|".join(hashes)})
 
+    def force_seeding(self, hashes: tuple[str, ...]) -> None:
+        """Switch these torrents to forced seeding."""
+        self.call("torrents/setForceStart", {"hashes": "|".join(hashes), "value": "true"})
+
 
 def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> Snapshot:
     """Sum up qBittorrent's state; a torrent with no metadata yet counts at the size the index listed for it."""
@@ -284,6 +297,7 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
     known: set[str] = set()
     total = left = 0
     incomplete = []
+    seeding = []
     for key, torrent in maindata.get("torrents", {}).items():
         infohash = torrent.get("infohash_v1") or key
         known |= {key, infohash}
@@ -295,7 +309,9 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
             total += size
             if remaining > 0 and not torrent.get("state", "").startswith(("stopped", "paused")):
                 incomplete.append(key)
-    return Snapshot(free, frozenset(known), total, left, tuple(incomplete))
+            if torrent.get("state") in SEEDING_STATES:
+                seeding.append(key)
+    return Snapshot(free, frozenset(known), total, left, tuple(incomplete), tuple(seeding))
 
 
 def refusal(details: Details, config: Config, snapshot: Snapshot) -> str | None:
@@ -324,7 +340,12 @@ def load_state(path: Path) -> dict[str, Any]:
         log.error("starting again from an empty state, because %s can't be read: %s", path, err)  # noqa: TRY400 # no traceback
     if not isinstance(state, dict):
         state = {}
-    return {"terms": state.get("terms", []), "done": state.get("done", {}), "pending": state.get("pending", {})}
+    return {
+        "terms": state.get("terms", []),
+        "done": state.get("done", {}),
+        "pending": state.get("pending", {}),
+        "forced": state.get("forced", []),
+    }
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
@@ -414,11 +435,26 @@ class Watch:
                 len(snapshot.incomplete),
             )
 
+    def force_finished(self, snapshot: Snapshot) -> None:
+        """Switch its own finished torrents to forced seeding, once each; failing to doesn't hold up the poll."""
+        forced = self.state["forced"]
+        finished = tuple(key for key in snapshot.seeding if key not in forced)
+        if not finished:
+            return
+        try:
+            self.client.force_seeding(finished)
+        except WatchError as err:
+            log.warning("can't switch %d finished torrents to forced seeding yet: %s", len(finished), err)
+            return
+        forced.extend(finished)
+        log.info("switched %d finished torrents to forced seeding", len(finished))
+
     def run(self) -> None:
         """Run one poll."""
         self.client.login()
         snapshot = read_snapshot(self.client.maindata(), self.state["done"])
         self.stop_if_short_of_space(snapshot)
+        self.force_finished(snapshot)
         for position, term in enumerate(self.config.terms):
             if position:
                 time.sleep(self.config.pause_seconds)

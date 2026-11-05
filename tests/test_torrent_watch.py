@@ -39,6 +39,8 @@ class Site:
         self.requests: list[str] = []
         self.added: list[dict[str, str]] = []
         self.stopped: list[str] = []
+        self.forced: list[str] = []
+        self.force_status = HTTPStatus.OK
         self.index_status = HTTPStatus.OK
         self.add_answer = '{"failure_count":0,"success_count":1}'
         self.refusal = HTTPStatus.UNAUTHORIZED
@@ -68,6 +70,10 @@ class Site:
         if url.path == "/api/v2/torrents/stop":
             self.stopped.extend(form["hashes"].split("|"))
             return HTTPStatus.OK, "", {}
+        if url.path == "/api/v2/torrents/setForceStart":
+            if self.force_status == HTTPStatus.OK and form["value"] == "true":
+                self.forced.extend(form["hashes"].split("|"))
+            return self.force_status, "", {}
         return HTTPStatus.NOT_FOUND, "not here", {}
 
 
@@ -306,6 +312,72 @@ def test_with_space_it_stops_nothing(watching: tuple[Site, tw.Config]) -> None:
     assert stand_in.stopped == []
 
 
+def own_torrent(**fields: object) -> dict[str, object]:
+    return {"category": tw.CATEGORY, "total_size": GB, "amount_left": 0, "state": "stalledUP", **fields}
+
+
+@pytest.mark.parametrize("state", sorted(tw.SEEDING_STATES))
+def test_a_finished_torrent_is_switched_to_forced_seeding(watching: tuple[Site, tw.Config], state: str) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {"a" * 40: own_torrent(state=state)}
+    run(config)
+    assert stand_in.forced == ["a" * 40]
+
+
+def test_forced_seeding_happens_once_so_a_torrent_switched_back_by_hand_stays_so(
+    watching: tuple[Site, tw.Config],
+) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {"a" * 40: own_torrent()}
+    run(config)
+    run(config)
+    assert stand_in.forced == ["a" * 40]
+    assert state_of(config)["forced"] == ["a" * 40]
+    # One that finishes later is still switched.
+    stand_in.torrents["b" * 40] = own_torrent(state="uploading")
+    run(config)
+    assert stand_in.forced == ["a" * 40, "b" * 40]
+
+
+@pytest.mark.parametrize(
+    "torrent",
+    [
+        # A magnet link with no metadata yet: nothing left to download, but nothing to seed either.
+        own_torrent(state="metaDL", total_size=-1),
+        own_torrent(state="downloading", amount_left=GB),
+        own_torrent(state="stoppedUP"),
+        own_torrent(state="forcedUP"),
+        own_torrent(state="error"),
+        # Someone else's: the owner's own uploads and manual additions are left alone.
+        own_torrent(category=""),
+        own_torrent(category="other"),
+    ],
+)
+def test_forced_seeding_leaves_everything_else_alone(watching: tuple[Site, tw.Config], torrent: dict) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {"a" * 40: torrent}
+    run(config)
+    assert stand_in.forced == []
+
+
+def test_failing_to_force_seeding_doesnt_hold_up_the_poll_and_is_tried_again(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {"a" * 40: own_torrent()}
+    stand_in.force_status = HTTPStatus.BAD_GATEWAY
+    stand_in.search["qwen"].append(row("a/new", NEW))
+    stand_in.models["a/new"] = {"license": "mit", "sizeBytes": GB}
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert magnets(stand_in) == [NEW]
+    assert any("forced seeding yet" in message for message in caplog.messages)
+    assert state_of(config)["forced"] == []
+    stand_in.force_status = HTTPStatus.OK
+    run(config)
+    assert stand_in.forced == ["a" * 40]
+
+
 @pytest.mark.parametrize("free", [0, None, "1000"])
 def test_no_free_space_figure_means_nothing_is_added_or_stopped(
     watching: tuple[Site, tw.Config], free: object, monkeypatch: pytest.MonkeyPatch
@@ -519,7 +591,7 @@ def test_settings_that_cant_be_right_are_refused(settings: dict[str, str], expec
 def test_a_damaged_state_file_starts_again(tmp_path: Path, content: str) -> None:
     path = tmp_path / "state.json"
     path.write_text(content, encoding="utf-8")
-    assert tw.load_state(path) == {"terms": [], "done": {}, "pending": {}}
+    assert tw.load_state(path) == {"terms": [], "done": {}, "pending": {}, "forced": []}
 
 
 def test_saving_the_state_leaves_no_temporary_file(tmp_path: Path) -> None:
