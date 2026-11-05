@@ -8,8 +8,8 @@ is a best-effort policy, not a contract.
 - **Questions, bugs and ideas**: [GitHub Issues](https://github.com/HoneyBearTech/homelab-deimos/issues).
   Say which version you run, which service is involved, and what you expected. Leave out tokens,
   passwords, hostnames, addresses and paths.
-- **Problems inside a service** (Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie): that project's own
-  support channels; homelab-deimos only pins and wires the images.
+- **Problems inside a service** (Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, qBittorrent): that project's
+  own support channels; homelab-deimos only pins and wires the images.
 - **Security vulnerabilities**: never in a public issue; see [SECURITY.md](SECURITY.md).
 - **Documentation**: the [README](README.md) and [docs/](docs/README.md), starting with the
   [quick start](docs/quick-start.md).

@@ -60,7 +60,8 @@ host's services goes to ares too (owner 2026-10-13).
 - **The media library is never backed up, restored or deleted by this repo's scripts.** It is far too large and
   is protected by the NAS. A service lists such paths in its `org.honeybeartech.deimos.backup.skip` label
   (comma-separated container paths); `backup.sh` skips them, `restore.sh` refuses to write them, and the smoke
-  test checks both. Tdarr's lists `/media`, `/temp` and `/app/logs`; the AMS app's `/app/logs`. Tdarr writes to
+  test checks both. Tdarr's lists `/media`, `/temp` and `/app/logs`; the AMS app's `/app/logs`; qBittorrent's
+  `/downloads`. Tdarr writes to
   the library, so treat Tdarr upgrades and flow changes as risky to data: Tdarr is excluded from Dependabot
   auto-merge.
 - `scripts/backup.sh` archives every read-write volume or bind mount except the Docker socket, anonymous volumes
@@ -93,7 +94,8 @@ host's services goes to ares too (owner 2026-10-13).
   required setting, `${CONFIG_ROOT:?set CONFIG_ROOT in .env}/<app>/config` for each app's settings and database, and
   any other per-app folder beside it as `${CONFIG_ROOT}/<app>/<purpose>` (`tdarr/server`, `tdarr/logs`,
   `tdarr/transcode`, `haspelsync/logs`). `<app>` is the lowercase app name (the AMS app's is `haspelsync`, its
-  container name). No per-app path settings and **no named Docker volumes for app data**; `MEDIA_PATH` stays.
+  container name). No per-app path settings and **no named Docker volumes for app data**; `MEDIA_PATH` and
+  `TORRENTS_PATH` (files, not app data) stay.
   `tests/test_settings.py` enforces it.
 - **Never point a path setting into `/var/lib/docker/volumes`, and never keep app data in a named volume.**
   `docker volume prune`, `docker system prune --volumes` and Portainer's "remove unused volumes" delete every volume

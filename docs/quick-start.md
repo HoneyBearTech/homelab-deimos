@@ -21,7 +21,7 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    ```
 
    In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`,
-   `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`),
+   `TORRENTS_PATH` (qBittorrent's own folder, outside the media library), `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`),
    `SPOOLMAN_PUBLIC_URL` and `MEALIE_PUBLIC_URL`. With an NVIDIA GPU, uncomment `COMPOSE_FILE=compose.yaml:compose.gpu.yaml`. Every setting
    is described in [interfaces.md](interfaces.md#settings).
 
@@ -30,7 +30,8 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
 
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config
+     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
+     "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs the certificate and key it shares with your Dozzle hub, in
@@ -59,6 +60,8 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    In Tdarr, add a library pointing at the media mount and test your flow on a small folder first: Tdarr
    replaces the files it processes. In the AMS app, add your printers (serial number, access code, address);
    it finds Spoolman on its own. In Mealie, sign in with its first account (`changeme@example.com`, `MyPassword`)
-   and change its e-mail and password at once.
+   and change its e-mail and password at once. In qBittorrent, sign in with the temporary password in its log and set
+   your own, then check the address it uses and forward its peer port
+   ([installing.md](installing.md#qbittorrent)).
 
 To upgrade later, follow [upgrading.md](upgrading.md); it starts with a backup.

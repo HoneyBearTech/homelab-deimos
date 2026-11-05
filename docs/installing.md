@@ -53,6 +53,7 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | What | Where on the host | In the container |
 | --- | --- | --- |
 | The media library | `MEDIA_PATH` | `/media` |
+| qBittorrent's torrents' files (not backed up) | `TORRENTS_PATH` | `/downloads` |
 | Tdarr's settings | `CONFIG_ROOT/tdarr/config` | `/app/configs` |
 | Tdarr's database (libraries, flows, history) | `CONFIG_ROOT/tdarr/server` | `/app/server` |
 | Tdarr's logs (not backed up) | `CONFIG_ROOT/tdarr/logs` | `/app/logs` |
@@ -61,6 +62,7 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | The AMS app's printer list (with the printers' access codes) and settings | `CONFIG_ROOT/haspelsync/config` | `/app/printers` |
 | The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
 | Mealie's recipe images, its own backups and the keys it signs sign-ins with | `CONFIG_ROOT/mealie/config` | `/app/data` |
+| qBittorrent's settings, login and torrent list | `CONFIG_ROOT/qbittorrent-direct/config` | `/config` |
 | Mealie's database URL (not backed up; [below](#mealies-database)) | `CONFIG_ROOT/mealie/secrets/database_url` | `/run/secrets/mealie_database_url`, read-only |
 | Spoolman's database password (not backed up; empty with SQLite; [below](#spoolmans-database)) | `CONFIG_ROOT/spoolman/secrets/db_password` | `/run/secrets/spoolman_db_password`, read-only |
 | The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
@@ -84,14 +86,16 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
 
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config
+     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
+     "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
    ([below](#dozzles-certificate)), Mealie the URL of its database in `CONFIG_ROOT/mealie/secrets`
    ([below](#mealies-database)), and Spoolman the file for its database password, empty while it keeps SQLite
    ([below](#spoolmans-database)). social-to-mealie needs its API keys in `social-to-mealie.env` before it can import
-   anything ([below](#social-to-mealie)).
+   anything ([below](#social-to-mealie)), and qBittorrent a password of your own at its first sign-in
+   ([below](#qbittorrent)).
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -245,6 +249,37 @@ It has no login of its own: keep its port (9926) on the LAN, behind the reverse 
 it as an app (to share links to it from a phone) only over HTTPS, so through the reverse proxy. Use version 1.8.2 or
 later: earlier versions let anyone who could reach it run commands in its container (GHSA-r63c-m6m6-mvh3).
 
+## qBittorrent
+
+qBittorrent is a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from
+torrent files and magnet links. No other service in the stack talks to it, and the only files it can reach are in
+`TORRENTS_PATH` (mounted at `/downloads`), so keep the media library out of that folder. Every path you set in
+qBittorrent must be under `/downloads`: anything else is lost when the container is recreated.
+
+1. **Sign in and set a password.** The user is `admin`, and each start logs a temporary password until you set your
+   own: `docker compose logs qbittorrent-direct | grep 'temporary password'`. Open port 8091 and set a long, unique
+   password under Tools → Options → WebUI.
+2. **Check the address it uses.** Peers and trackers see the public IP address this host reaches the internet from,
+   and this stack does nothing to hide it. Turn on Tools → Options → Behavior → Show external IP, and check that the
+   status bar shows the address you expect before you add a torrent.
+3. **Forward its peer port.** Forward port 50881, TCP and UDP, from the router to this host, so peers can connect to
+   it; without that it can still reach out to them, but it seeds to far fewer. Never forward the web UI (8091). Under
+   Tools → Options → Speed, set a global upload limit that leaves room for everything else on your connection.
+4. **On a network share**, keep Tools → Options → Advanced → Disk IO type at Default (reading and writing the files on
+   this build), never memory-mapped files ([dependencies.md](dependencies.md#qbittorrent)).
+5. **Behind a reverse proxy**, keep its access list to the LAN, and turn on Tools → Options → WebUI → Enable reverse
+   proxy support with the proxy's address in the trusted proxies list. Without that, repeated failed sign-ins ban the
+   proxy, and so everyone who uses it.
+
+**To share files**, copy them into `TORRENTS_PATH`, then open Tools → Torrent Creator → Create New Torrent. Type the
+source as its path in the container, under `/downloads`, and tick **Start seeding immediately**, which is off by
+default. Export Torrent in the creator's list gives you the torrent file, and a torrent's context menu in the main list
+has Copy → Magnet link.
+
+**To download**, use File → Add Torrent Link, which takes magnet links as well as URLs of torrent files. To have a
+browser open magnet links in it, use Tools → Register to handle magnet links, which browsers allow only over HTTPS, so
+through the reverse proxy.
+
 ## Scheduled backups
 
 `scripts/scheduled-backup.sh` takes a backup (`scripts/backup.sh`), copies it to another machine with rsync
@@ -322,6 +357,8 @@ has none; [rebuilding.md](rebuilding.md#an-encrypted-backup)).
   whoever reaches social-to-mealie spends its OpenAI key and adds recipes to Mealie. Don't publish their ports beyond
   the LAN; Docker-published ports bypass host firewalls such as `ufw`, so restrict them at the
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
+- **qBittorrent is on the public internet** by design: peers see your public IP address. Forward only its peer port
+  (50881), never its web UI, and give it only files you're free to share ([qBittorrent](#qbittorrent)).
 - **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
   Network access. Mealie always has one: change its first account's e-mail and password at once
   ([Mealie's database](#mealies-database), step 3).
