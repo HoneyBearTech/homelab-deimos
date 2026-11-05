@@ -6,7 +6,7 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15290/badge)](https://www.bestpractices.dev/projects/15290)
 [![OpenSSF Baseline](https://www.bestpractices.dev/projects/15290/baseline)](https://www.bestpractices.dev/projects/15290)
 
-Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an NVIDIA GPU: Tdarr, Spoolman, HaspelSync, Mealie, social-to-mealie and qBittorrent. Version-pinned, kept as code for easy upgrades and rebuilds.
+Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an NVIDIA GPU: Tdarr, Spoolman, HaspelSync, Mealie, social-to-mealie, qBittorrent and torrent-watch. Version-pinned, kept as code for easy upgrades and rebuilds.
 
 > [!WARNING]
 > Tdarr rewrites the files in your media library: a broken upgrade or a misconfigured flow can damage or delete
@@ -43,6 +43,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
   on Instagram, TikTok, YouTube Shorts and the like into a Mealie recipe, using OpenAI's API
 - **qBittorrent**: a torrent client for files you're free to share: it makes torrents, seeds them, and downloads
   from torrent files and magnet links
+- **torrent-watch**: this repository's own small script: it adds new torrents from a model index to qBittorrent by
+  itself, within limits you set ([installing](docs/installing.md#torrent-watch)); with no watch terms it does nothing
 - **autoheal**: restarts any of them whose health check fails, through a socket proxy that only lets it list,
   inspect, restart and stop containers
 - **A Dozzle agent**: serves the containers' logs to the homelab's Dozzle on another host, which shows every
@@ -63,14 +65,15 @@ git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deim
 cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and the two *_PUBLIC_URLs
 . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
   "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-  "$TORRENTS_PATH"
+  "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
 docker compose up -d --wait
 ```
 
 The Dozzle agent needs its certificate and key first ([installing](docs/installing.md#dozzles-certificate)),
 Mealie the URL of its database ([installing](docs/installing.md#mealies-database)), and social-to-mealie its API keys
 ([installing](docs/installing.md#social-to-mealie)). qBittorrent's first sign-in and its port are in
-[installing](docs/installing.md#qbittorrent).
+[installing](docs/installing.md#qbittorrent). torrent-watch needs qBittorrent's password in a file before it can be
+created ([installing](docs/installing.md#torrent-watch)).
 
 For Tdarr to use the GPU, the host needs the NVIDIA driver, the NVIDIA Container Toolkit 1.18+ and Docker Engine
 29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs
@@ -102,12 +105,15 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | --- | --- | --- |
 | `TZ` | `Etc/UTC` | Time zone |
 | `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
-| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie and qBittorrent run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH` |
+| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH` |
 | `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
 | `TORRENTS_PATH` | `/srv/torrents` | The folder qBittorrent keeps its torrents' files in, the only files it can reach (never backed up by this stack) |
 | `CONFIG_ROOT` | `/srv/config` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |
 | `SPOOLMAN_PUBLIC_URL` | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at (the AMS app's links) |
 | `MEALIE_PUBLIC_URL` | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its links in notifications and shared recipes) |
+| `TORRENT_WATCH_INDEX_URL`, `TORRENT_WATCH_TERMS` | `https://index.example.com`, empty | The model index torrent-watch reads (https only), and what to watch; with no terms it does nothing |
+| `TORRENT_WATCH_MAX_TORRENT_GB`, `TORRENT_WATCH_MAX_TOTAL_GB`, `TORRENT_WATCH_MIN_FREE_GB` | `100`, `500`, `500` | The largest torrent it adds, the most its category holds, and the free space it keeps on the disk |
+| `TORRENT_WATCH_QBITTORRENT_USERNAME` | `admin` | The qBittorrent user it signs in as |
 
 Mealie's database URL, with its password, is a file under `CONFIG_ROOT/mealie/secrets`, never a setting
 ([installing](docs/installing.md#mealies-database)); so is Spoolman's database password, under
@@ -132,14 +138,16 @@ Ports, volumes and labels: [docs/interfaces.md](docs/interfaces.md).
 - qBittorrent's peers see the public IP address this host reaches the internet from, so give it only files you're
   free to share. Forward only its peer port (50881, TCP and UDP) from the router, never its web UI, and keep the media
   library out of `TORRENTS_PATH` ([installing](docs/installing.md#qbittorrent)).
+- torrent-watch adds torrents with nobody asking first, and they seed from that same address. Watch only what you're
+  free to share, and set its limits to suit the disk ([installing](docs/installing.md#torrent-watch)).
 - The GPU is given to Tdarr as a device reservation through the NVIDIA runtime, never by running it privileged.
 - autoheal never gets the Docker socket: it goes through a proxy that only lets it list, inspect, restart and
   stop containers.
 - The Dozzle agent reads logs through the Docker socket: it accepts only a Dozzle hub with the certificate and key
   you made for them, never the pair built into every Dozzle image
   ([docs/installing.md](docs/installing.md#dozzles-certificate)), and its port (7007) stays on the LAN.
-- Secrets (logins, API keys, printer credentials) live in each service's data, Mealie's database URL in its secret
-  file, social-to-mealie's keys in `social-to-mealie.env`, and the webhook and push monitor URLs in `autoheal.env`
+- Secrets (logins, API keys, printer credentials) live in each service's data, Mealie's database URL and torrent-watch's
+  qBittorrent password in their secret files, social-to-mealie's keys in `social-to-mealie.env`, and the webhook and push monitor URLs in `autoheal.env`
   and `backup.env`: never in this repository or `.env`. Backups contain them: keep them
   private and off the host, and encrypt the copy that leaves it (`BACKUP_AGE_RECIPIENT`).
 - Don't run an auto-updater such as Watchtower on these containers; upgrade from this repository instead (a

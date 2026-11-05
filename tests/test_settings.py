@@ -1,6 +1,8 @@
+import hashlib
 import re
 from pathlib import Path
 
+import torrent_watch
 import yaml
 
 ROOT = Path(__file__).parent.parent
@@ -14,6 +16,7 @@ APPS = {
     "ams": ("haspelsync", {"config": "/app/printers", "logs": "/app/logs"}),
     "mealie": ("mealie", {"config": "/app/data"}),
     "qbittorrent-direct": ("qbittorrent-direct", {"config": "/config"}),
+    "torrent-watch": ("torrent-watch", {"config": "/config"}),
 }
 NOT_APP_DATA = (
     "${MEDIA_PATH:?set MEDIA_PATH in .env}:/media",
@@ -93,6 +96,43 @@ def test_qbittorrent_web_ui_has_the_same_port_on_both_sides() -> None:
     service = compose()["services"]["qbittorrent-direct"]
     port = service["environment"]["WEBUI_PORT"]
     assert f"{port}:{port}" in service["ports"]
+
+
+def test_torrent_watch_is_recreated_when_its_script_changes() -> None:
+    # Compose keeps a container when only a file mounted into it changes, and a pull replaces that file, which leaves
+    # the running container's mount pointing at nothing. Changing this setting along with the script recreates it.
+    service = compose()["services"]["torrent-watch"]
+    digest = hashlib.sha256((ROOT / "scripts/torrent_watch.py").read_bytes()).hexdigest()
+    assert service["environment"]["TORRENT_WATCH_SCRIPT_SHA256"] == digest
+
+
+def test_torrent_watch_is_locked_down_and_reads_its_password_from_its_secret() -> None:
+    config = compose()
+    service = config["services"]["torrent-watch"]
+    assert service["read_only"] is True
+    assert service["user"].startswith("${PUID")
+    assert "ports" not in service
+    assert "cap_add" not in service
+    assert service["secrets"] == ["qbittorrent_password"]
+    secret = config["secrets"]["qbittorrent_password"]["file"]
+    assert secret == f"{CONFIG_ROOT}/torrent-watch/secrets/qbittorrent_password"
+    assert config["configs"]["torrent_watch"]["file"] == "./scripts/torrent_watch.py"
+
+
+def test_torrent_watch_limits_have_the_same_defaults_everywhere() -> None:
+    environment = compose()["services"]["torrent-watch"]["environment"]
+    example = dict(line.split("=", 1) for line in read(".env.example").splitlines() if line and line[0] != "#")
+    config = torrent_watch.load_config({})
+    limits = {
+        "TORRENT_WATCH_MAX_TORRENT_GB": config.max_torrent,
+        "TORRENT_WATCH_MAX_TOTAL_GB": config.max_total,
+        "TORRENT_WATCH_MIN_FREE_GB": config.min_free,
+    }
+    for name, default in limits.items():
+        assert environment[name] == f"${{{name}:-{default // torrent_watch.GB}}}"
+        assert example[name] == str(default // torrent_watch.GB)
+    # Out of the box it watches nothing, so the smoke test and a new installation add nothing.
+    assert example["TORRENT_WATCH_TERMS"] == ""
 
 
 def test_spoolman_reads_its_password_from_its_secret_and_its_server_only_from_spoolman_env() -> None:

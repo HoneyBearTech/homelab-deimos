@@ -1,5 +1,5 @@
 # Settings for the repo's Python tooling. homelab-deimos is a Compose stack, not a package; its only code is
-# scripts/check_compose.py. This file only configures ruff, pytest and coverage. Tools are pinned with
+# scripts/check_compose.py and scripts/torrent_watch.py. This file only configures ruff, pytest and coverage. Tools are pinned with
 # hashes in requirements-dev.txt.
 
 [tool.ruff]

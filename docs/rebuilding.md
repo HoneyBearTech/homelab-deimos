@@ -84,7 +84,8 @@ paths differ (but keep the media library's container path; never point `CONFIG_R
 create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](installing.md#installing), step 3), and put
 the Dozzle agent's certificate and key back from your password manager, owned by root
 ([installing.md](installing.md#dozzles-certificate)), and write Mealie's database URL again
-([installing.md](installing.md#mealies-database), step 2; with a new password for its login if the old one is lost):
+([installing.md](installing.md#mealies-database), step 2; with a new password for its login if the old one is lost),
+and qBittorrent's password for torrent-watch ([installing.md](installing.md#torrent-watch), step 1):
 they aren't in the backup, and without them the restore can't create those containers. Then:
 
 ```sh
@@ -118,6 +119,8 @@ its spools, and Mealie its recipes, with their images.
   (`CONFIG_ROOT/mealie/secrets/database_url`) is written again (step 4).
 - **Spoolman's database password** (`CONFIG_ROOT/spoolman/secrets/db_password`): written again, or empty while it
   keeps SQLite; with `spoolman.env`, its database is on its server, backed up there.
+- **qBittorrent's password, for torrent-watch** (`CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password`): written
+  again ([installing.md](installing.md#torrent-watch)).
 - **Host settings**: the static address, the GPU passthrough, the network share's mount, SSH keys, monitoring
   agents.
 - **Other machines' view of this one**: reverse proxy hosts, DNS records, anything that reaches Deimos by

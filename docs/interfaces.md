@@ -14,12 +14,18 @@ setting marked required stops `docker compose` with an error naming it when it's
 | --- | --- | --- | --- |
 | `COMPOSE_FILE` | no | `compose.yaml:compose.gpu.yaml` | Set on a host with an NVIDIA GPU, so Tdarr gets it ([GPU](#gpu)). Leave unset without one. |
 | `TZ` | yes | `Etc/UTC` | Time zone (tz database name) for logs and schedules. |
-| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie and qBittorrent run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH`. |
+| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH`. |
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
 | `TORRENTS_PATH` | yes | `/srv/torrents` | Host folder qBittorrent keeps its torrents' files in, the only files it can reach. Keep the media library out of it. Never backed up by this stack. |
 | `CONFIG_ROOT` | yes | `/srv/config` | Host folder holding every app's data, one folder per app: `CONFIG_ROOT/<app>/config` and any other folder beside it ([where data lives](installing.md#where-data-lives)). Never inside `/var/lib/docker/volumes`. |
 | `SPOOLMAN_PUBLIC_URL` | yes | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at; the AMS app's links point there. |
 | `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there, and so do the links social-to-mealie shows after an import. |
+| `TORRENT_WATCH_INDEX_URL` | no | `https://index.example.com` | The model index torrent-watch reads, https only. Needed once there are watch terms. |
+| `TORRENT_WATCH_TERMS` | no | empty | What it watches, separated by commas: words to search for, or one author with a slash after it ([installing.md](installing.md#torrent-watch)). Empty: it does nothing. |
+| `TORRENT_WATCH_MAX_TORRENT_GB` | no | `100` | It adds nothing larger than this, in GB. |
+| `TORRENT_WATCH_MAX_TOTAL_GB` | no | `500` | It adds nothing that would take what its category holds in qBittorrent above this, in GB. |
+| `TORRENT_WATCH_MIN_FREE_GB` | no | `500` | The free space it keeps on the torrents' disk, in GB: it adds nothing that would go below this, and stops its own downloads if the disk falls below it anyway. |
+| `TORRENT_WATCH_QBITTORRENT_USERNAME` | no | `admin` | The qBittorrent user it signs in as; the password is a [Docker secret](#volumes-and-mounts). |
 
 No secret is a setting. A service that reads a secret from a file gets it as a Docker secret, a file under
 `CONFIG_ROOT` ([volumes and mounts](#volumes-and-mounts)). A secret a service can only take from its environment gets
@@ -70,6 +76,10 @@ The web UI's port is the same on both sides of the mapping, because it answers `
 `Host` header names a port other than its own. Everything else, its login included, is in its own settings
 (`CONFIG_ROOT/qbittorrent-direct/config`), changed in its web UI, which the backups cover.
 
+torrent-watch's script is mounted from this repository, and `TORRENT_WATCH_SCRIPT_SHA256` in `compose.yaml` is its
+checksum, which a test checks: Compose doesn't recreate a container when only a mounted file changes, and a pull
+replaces that file, which leaves the running container's mount pointing at nothing. Change the two together.
+
 ## Services and ports
 
 | Service | Image | Host port → container | What |
@@ -82,13 +92,14 @@ The web UI's port is the same on both sides of the mapping, because it answers `
 | social-to-mealie | `ghcr.io/gerardpollorebozado/social-to-mealie` | 9926 → 3000 | Web UI and its import API (LAN only; no login of its own) |
 | qBittorrent | `lscr.io/linuxserver/qbittorrent` | 8091 → 8091 | Web UI and API (LAN only; its own login) |
 | | | 50881 → 50881, TCP and UDP | Peers; the one port to forward from the router |
+| torrent-watch | `python` | none | Adds new torrents from a model index to qBittorrent |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 | Dozzle agent | `amir20/dozzle` | 7007 → 7007 | Agent for the homelab's Dozzle on another host (LAN only); no web UI of its own |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
 `/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, Mealie's own `/app/healthcheck.sh`
-(`/api/app/about`), social-to-mealie's `/manifest.webmanifest`, qBittorrent's login page, autoheal's process, the
+(`/api/app/about`), social-to-mealie's `/manifest.webmanifest`, qBittorrent's login page, torrent-watch's heartbeat (that a poll has started recently), autoheal's process, the
 proxy's `/_ping` and the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to stop
 before restarting it; a service gets 10 minutes after it starts before failed checks count.
 
@@ -116,8 +127,11 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/app/data` | `CONFIG_ROOT/mealie/config` | Mealie: recipe images, its own backups and the keys it signs sign-ins with (its database is on the database server) |
 | `/config` | `CONFIG_ROOT/qbittorrent-direct/config` | qBittorrent: settings, login and torrent list |
 | `/downloads` | `TORRENTS_PATH` | qBittorrent: its torrents' files (read-write; never backed up) |
+| `/config` | `CONFIG_ROOT/torrent-watch/config` | torrent-watch: what it has seen and added |
+| `/app/torrent_watch.py` (read-only; a Compose config) | `scripts/torrent_watch.py` in the checkout | torrent-watch: its script |
 | `/run/secrets/spoolman_db_password` (read-only; a Docker secret) | `CONFIG_ROOT/spoolman/secrets/db_password`, owned by `PUID:PGID`, mode `600`, no line break; empty with SQLite ([installing.md](installing.md#spoolmans-database)) | Spoolman (`SPOOLMAN_DB_PASSWORD_FILE` points at it) |
 | `/run/secrets/mealie_database_url` (read-only; a Docker secret) | `CONFIG_ROOT/mealie/secrets/database_url`, owned by `PUID:PGID`, mode `600` ([installing.md](installing.md#mealies-database)) | Mealie (`POSTGRES_URL_OVERRIDE_FILE` points at it) |
+| `/run/secrets/qbittorrent_password` (read-only; a Docker secret) | `CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password`, owned by `PUID:PGID`, mode `600` ([installing.md](installing.md#torrent-watch)) | torrent-watch |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
 | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key` (read-only; Docker secrets) | `CONFIG_ROOT/dozzle/certs/dozzle_cert.pem` and `dozzle_key.pem`, owned by root ([installing.md](installing.md#dozzles-certificate)) | the Dozzle agent (`DOZZLE_CERT`, `DOZZLE_KEY` point at them) |
 
@@ -126,7 +140,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | Label | Meaning |
 | --- | --- |
 | `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
-| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, qBittorrent, socket-proxy and the Dozzle agent. |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, qBittorrent, torrent-watch, socket-proxy and the Dozzle agent. |
 | `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`; qBittorrent: `/downloads`. |
 | `org.honeybeartech.deimos.backup.exclude` | Paths inside a service's data mounts (comma-separated, exact container paths, at any depth) that `scripts/backup.sh` leaves out of the mount's archive and `scripts/restore.sh` leaves in place. A path that isn't inside one of the service's data mounts, or contains `..` or a pattern character (`*?[\`), makes both fail before anything stops. Not in use. |
 
@@ -153,7 +167,8 @@ other machines connect to port 8266; the AMS app connects to each printer on the
 5432, TLS) and fetches the recipe pages and images it is asked to import, from any website; social-to-mealie fetches
 the posts it is asked to import from their sites, sends their audio and text to OpenAI's API (`api.openai.com`), and
 posts the recipe to Mealie inside the stack; qBittorrent connects to the trackers its torrents name and to peers
-anywhere on the internet (and they connect to it, on port 50881, where the router forwards it). The scheduled backup to
+anywhere on the internet (and they connect to it, on port 50881, where the router forwards it); torrent-watch connects to the model index it is set to, over HTTPS, and to qBittorrent
+inside the stack. The scheduled backup to
 `BACKUP_REMOTE` (rsync,
 usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 

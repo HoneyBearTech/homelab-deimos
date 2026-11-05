@@ -9,6 +9,7 @@ smoke_prepare() {
   dozzle_prepare
   mealie_prepare
   spoolman_prepare
+  torrent_watch_prepare
 }
 
 # Spoolman keeps its SQLite database here, so its password secret is the empty file the installing docs have the user
@@ -26,6 +27,7 @@ smoke_check() {
   mealie_check
   social_to_mealie_check
   qbittorrent_check
+  torrent_watch_check
 }
 
 # The throwaway CONFIG_ROOT.
@@ -247,4 +249,112 @@ qbittorrent_check() {
   [ "$out" = "[]" ] || fail "qBittorrent didn't remove its test torrents: $out"
   compose exec -T "$qbt_service" rm -rf /downloads/smoke-model /tmp/smoke-session </dev/null
   echo "qBittorrent: signs in, takes a magnet link, and makes and seeds a torrent"
+}
+
+# torrent-watch: a throwaway password file, as on the host (with no watch terms the service itself never uses it). Then
+# the script's real poll, in its container, against this stack's qBittorrent signed in with the temporary password, with
+# a stand-in for the index: that it records what a term matches at first, adds what comes later under its own category
+# and folder, and leaves a torrent with the wrong licence out. Everything it adds is removed again, as above.
+tw_service=torrent-watch
+tw_added=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+
+torrent_watch_prepare() {
+  docker run --rm --network none -v "$(smoke_config_root):/config-root" "$busybox" sh -c '
+    mkdir -p /config-root/torrent-watch/secrets &&
+    od -An -tx1 -N16 /dev/urandom | tr -d " \n" >/config-root/torrent-watch/secrets/qbittorrent_password &&
+    chown -R "$1:$2" /config-root/torrent-watch/secrets &&
+    chmod 700 /config-root/torrent-watch/secrets && chmod 600 /config-root/torrent-watch/secrets/qbittorrent_password
+  ' secret "$(sed -n 's/^PUID=//p' "$work/env")" "$(sed -n 's/^PGID=//p' "$work/env")" </dev/null
+}
+
+torrent_watch_check() {
+  local logs password out
+  logs=$(compose logs --no-color "$tw_service")
+  [[ $logs == *"no watch terms set"* ]] || fail "torrent-watch didn't start idle: $logs"
+  password=$(compose logs --no-color "$qbt_service" |
+    sed -n 's/.*temporary password is provided for this session: //p' | tail -n 1)
+  [ -n "$password" ] || fail "qBittorrent logged no temporary password"
+  out=$(compose exec -T -e "SMOKE_PASSWORD=$password" -e "SMOKE_ADDED=$tw_added" "$tw_service" \
+    python -I - 2>&1 <<'PYTHON'
+import json
+import os
+import pathlib
+import sys
+import time
+
+sys.path.insert(0, "/app")
+import torrent_watch as tw
+
+password = pathlib.Path("/tmp/smoke-password")
+password.write_text(os.environ["SMOKE_PASSWORD"])
+state_file = pathlib.Path("/tmp/smoke-state.json")
+state_file.unlink(missing_ok=True)
+added = os.environ["SMOKE_ADDED"]
+listing = [f"a/first  1 GB  1 seeds  magnet:?xt=urn:btih:{'c' * 40}"]
+models = {"a/added": "mit", "a/refused": "other"}
+
+
+def get(url):
+    if "/s/" in url:
+        return "\n".join(listing) + "\n"
+    repo = url.split("=", 1)[1].replace("%2F", "/")
+    return json.dumps({"models": [{"id": repo, "license": models[repo], "sizeBytes": 1000}]})
+
+
+config = tw.load_config(
+    {
+        "TORRENT_WATCH_TERMS": "smoke",
+        "TORRENT_WATCH_INDEX_URL": "https://index.invalid",
+        "TORRENT_WATCH_QBITTORRENT_PASSWORD_FILE": str(password),
+        "TORRENT_WATCH_STATE_FILE": str(state_file),
+        "TORRENT_WATCH_MIN_FREE_GB": "1",
+    }
+)
+
+
+def poll():
+    client = tw.Qbittorrent(config.qbittorrent_url, config.username, config.password_file)
+    tw.Watch(config, tw.Index(config.index_url, get), client, tw.load_state(state_file)).run()
+
+
+# qBittorrent reports the free space a moment after it starts.
+for _ in range(30):
+    try:
+        poll()
+        break
+    except tw.WatchError as err:
+        print(err)
+        time.sleep(2)
+else:
+    sys.exit("the first poll never worked")
+listing += [
+    f"a/added  1 GB  1 seeds  magnet:?xt=urn:btih:{added}&dn=smoke-watch",
+    f"a/refused  1 GB  1 seeds  magnet:?xt=urn:btih:{'d' * 40}&dn=smoke-refused",
+]
+poll()
+state = json.loads(state_file.read_text())
+print(sorted(key for key, value in state["done"].items() if value["why"] == "added"))
+password.unlink()
+state_file.unlink()
+PYTHON
+  ) || fail "torrent-watch's poll failed: $out"
+  [[ $out == *"'$tw_added'"* ]] || fail "torrent-watch didn't add the new torrent: $out"
+  qbt_api --data-urlencode username=admin --data-urlencode "password=$password" "$qbt_url/api/v2/auth/login" >/dev/null
+  out=$(qbt_api "$qbt_url/api/v2/torrents/info")
+  [[ $out == *"\"hash\":\"$tw_added\""* ]] || fail "qBittorrent doesn't hold torrent-watch's torrent: $out"
+  [[ $out == *'"category":"watch"'* && $out == *'"save_path":"/downloads/watch"'* ]] ||
+    fail "torrent-watch's torrent isn't under its category and folder: $out"
+  [[ $out != *cccccccc* && $out != *dddddddd* ]] ||
+    fail "torrent-watch added a torrent it should have left out: $out"
+  qbt_api -d hashes=all -d deleteFiles=true "$qbt_url/api/v2/torrents/delete" >/dev/null
+  for _ in $(seq 1 30); do
+    out=$(qbt_api "$qbt_url/api/v2/torrents/info")
+    [ "$out" != "[]" ] || break
+    sleep 1
+  done
+  [ "$out" = "[]" ] || fail "qBittorrent didn't remove torrent-watch's test torrent: $out"
+  compose exec -T "$qbt_service" rm -rf /downloads/watch /tmp/smoke-session </dev/null
+  [[ $(compose logs --no-color "$tw_service") != *"Read-only file system"* ]] ||
+    fail "torrent-watch tried to write to its read-only root filesystem"
+  echo "torrent-watch: starts idle; signs in to qBittorrent, adds only what's new and allowed, under its own category"
 }
