@@ -31,7 +31,7 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
      "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-     "$TORRENTS_PATH"
+     "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs the certificate and key it shares with your Dozzle hub, in
@@ -41,6 +41,8 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    either ([installing.md](installing.md#mealies-database)). Spoolman needs the file
    `CONFIG_ROOT/spoolman/secrets/db_password`, empty unless its database is on a server
    ([installing.md](installing.md#spoolmans-database)).
+   torrent-watch needs qBittorrent's password in `CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password`, or its
+   container can't be created ([installing.md](installing.md#torrent-watch)).
 
 4. **Check the GPU** is visible to containers (skip this without one):
 

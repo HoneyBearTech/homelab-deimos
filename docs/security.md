@@ -66,6 +66,7 @@ transcoding with these settings is checked on the host, not in CI.
 | mealie | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID`; its image's start as root (changing its user's ids, taking ownership of `/app`, switching user) is skipped when it already runs as `PUID`. Writes only its data directory, which belongs to that user, and reads its database URL from a secret file that belongs to that user too (mode `600`). Limited to 1000 MB of memory |
 | social-to-mealie | none | yes (`/tmp`, `/app/.next/cache` in memory) | Its image runs it as its own user, which writes only temporary files (the downloaded post, its audio) and Next.js' cache. Keeps the yt-dlp built into its pinned image instead of installing the newest from PyPI at each start (`YTDLP_VERSION: none`) |
 | qbittorrent-direct | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of the data for `PUID:PGID`, writes the default settings into a directory that belongs to that user, runs the app as that user and stops it cleanly on shutdown. The app runs as that user with no capabilities. Writable root: the init runs from `/run` and writes to the image's own directories |
+| torrent-watch | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID`, which own its folder; writes only its state file there and a heartbeat in `/tmp`. Standard library only, so nothing is installed when it starts |
 | dozzle-agent | none | yes (`/tmp`, `/data` in memory) | Only reads the socket and its certificate and key, all owned by root; writes its address file to `/tmp` and the notification settings the Dozzle hub sends it to `/data`. The hub keeps those settings and sends them again each time it starts (an agent restarted while the hub runs has none until then) |
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
@@ -98,6 +99,12 @@ offer nothing else. Without capabilities that root can only reach what it owns (
   the host is on, so check the address the client reports ([installing.md](installing.md#qbittorrent)), and give it
   only files you're free to share. It is also the one service here that accepts connections from the internet: only its
   peer port may be forwarded, never its web UI. A file it downloads is untrusted until you've checked it.
+- **What torrent-watch adds.** It adds torrents with nobody looking, switches every finished torrent in qBittorrent to forced
+  seeding, and takes the model index's word for each one's
+  licence and size: its limits protect the disk, not what's in the files, and qBittorrent's piece hashes come from that
+  same index. Whoever controls the index can choose what this host downloads and seeds, within those limits. Its
+  password for qBittorrent gives full control of qBittorrent; it is a Docker secret, not in the backups, and the
+  service publishes no port.
 - **Mealie's database.** Its recipes and accounts are on the database server, which protects and backs them up;
   this stack holds only the URL with the login's password (a secret file) and connects over TLS
   (`sslmode=require`, which doesn't check the server's certificate).

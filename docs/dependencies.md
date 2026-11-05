@@ -4,7 +4,7 @@ How homelab-deimos chooses, obtains, tracks and updates what it's built from, an
 those dependencies has a vulnerability.
 
 homelab-deimos's dependencies are almost entirely the **container images** it runs. The rest are the tools its
-checks and tests use and the GitHub Actions in its workflows. Its own code, the policy checker, uses only the
+checks and tests use and the GitHub Actions in its workflows. Its own code, the policy checker and torrent-watch, uses only the
 Python standard library.
 
 ## Choosing a dependency

@@ -8,6 +8,9 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **For torrent-watch, write qBittorrent's password to a file and create its folder before deploying this**
+  ([docs/installing.md](docs/installing.md#torrent-watch)). Without the file, its container can't be created. Its
+  settings in `.env` are all optional: with no `TORRENT_WATCH_TERMS` it does nothing.
 - **For qBittorrent, set `TORRENTS_PATH` in `.env` and create its folders before deploying this**, as your user:
   `. ./.env && mkdir -p "$TORRENTS_PATH" "$CONFIG_ROOT/qbittorrent-direct/config"`. `TORRENTS_PATH` is a new required
   setting: without it Compose stops with an error naming it, and nothing deploys. After the deploy, set its password
@@ -107,6 +110,11 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- **torrent-watch**: adds new torrents from a model index to qBittorrent by itself, for the watch terms you set, within
+  limits per torrent and in total and a floor of free space on the disk, and only under licences with no terms to accept.
+  What a term matches when it first runs stays out. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
+  It is this repository's own script, on the standard library alone,
+  in Python's image, with no ports and a read-only root. The smoke test runs its real poll against qBittorrent.
 - **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port
   50881: a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from torrent
   files and magnet links. It has a new required setting, `TORRENTS_PATH`, the only files it can reach, which is never

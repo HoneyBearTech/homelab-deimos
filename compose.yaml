@@ -1,14 +1,16 @@
 # The Deimos stack: Tdarr (media transcoding and health checks), Spoolman (filament inventory), the AMS app that
 # keeps Spoolman in step with the printers' material systems, Mealie (recipes and meal plans) and social-to-mealie
-# (imports recipes from social-media posts into Mealie), plus autoheal (behind a filtering socket proxy) to restart any
-# of them that turns unhealthy, and a Dozzle agent that serves the host's container logs to the homelab's Dozzle on
-# another host. Every setting comes from .env (template: .env.example; reference: docs/interfaces.md); autoheal's
+# (imports recipes from social-media posts into Mealie), qBittorrent and torrent-watch (adds new torrents to it from a
+# model index), plus autoheal (behind a filtering socket proxy) to restart any of them that turns unhealthy, and a
+# Dozzle agent that serves the host's container logs to the homelab's Dozzle on another host. Every setting comes from
+# .env (template: .env.example; reference: docs/interfaces.md); autoheal's
 # optional webhook from autoheal.env (template: autoheal.env.example), Spoolman's optional database server from
 # spoolman.env (template: spoolman.env.example), social-to-mealie's API keys from social-to-mealie.env (template:
 # social-to-mealie.env.example), the
 # Dozzle agent's certificate and key from files under CONFIG_ROOT/dozzle/certs, Mealie's database URL from a file under
-# CONFIG_ROOT/mealie/secrets and Spoolman's database password from one under CONFIG_ROOT/spoolman/secrets (Docker
-# secrets, at the end). Every image is
+# CONFIG_ROOT/mealie/secrets, Spoolman's database password from one under CONFIG_ROOT/spoolman/secrets and
+# torrent-watch's qBittorrent password from one under CONFIG_ROOT/torrent-watch/secrets (Docker secrets, at the end).
+# Every image is
 # pinned as name:tag@sha256:<digest> and publishes linux/amd64; Dependabot proposes updates. scripts/check_compose.py
 # enforces the policy (docs/security.md#policy).
 #
@@ -265,8 +267,8 @@ services:
   qbittorrent-direct:
     <<: *hardened
     # A torrent client for files you're free to share: it makes torrents, seeds them, and downloads from torrent files
-    # and magnet links. Its peers see the public address this host reaches the internet from (docs/security.md), and no
-    # other app in this stack talks to it.
+    # and magnet links. Its peers see the public address this host reaches the internet from (docs/security.md), and the
+    # only app in this stack that talks to it is torrent-watch.
     # linuxserver.io's version tag names qBittorrent and the libtorrent it is built on: 2.1, whose disk I/O reads and
     # writes files instead of mapping them into memory, which suits a network share (docs/dependencies.md#qbittorrent).
     # Dependabot follows this tag's rebuilds but can't read it as a version: a new qBittorrent is bumped by hand.
@@ -317,6 +319,46 @@ services:
       <<: *healthcheck
       # The web UI's login page answers without a login.
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8091/"]
+
+  torrent-watch:
+    <<: *hardened
+    # Adds new torrents from a model index to qBittorrent, within the limits below (docs/installing.md#torrent-watch).
+    # With no watch terms it does nothing. It is this repository's own script, on the standard library alone, run in
+    # Python's image rather than built into one (the policy refuses building images).
+    image: python:3.14.8-alpine3.24@sha256:f6a589d43c42b9e7f7dc67a12d37132491f362859a5d750607710cc56da3bc72
+    container_name: torrent-watch
+    restart: unless-stopped
+    # It runs as PUID:PGID, which own its folder, so it needs no capability. It writes only its state file and /tmp.
+    user: "${PUID:?set PUID in .env}:${PGID:?set PGID in .env}"
+    read_only: true
+    tmpfs:
+      - /tmp # the heartbeat its health check reads
+    command: ["python", "-I", "/app/torrent_watch.py"]
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      TORRENT_WATCH_INDEX_URL: ${TORRENT_WATCH_INDEX_URL:-}
+      TORRENT_WATCH_TERMS: ${TORRENT_WATCH_TERMS:-}
+      TORRENT_WATCH_MAX_TORRENT_GB: ${TORRENT_WATCH_MAX_TORRENT_GB:-100}
+      TORRENT_WATCH_MAX_TOTAL_GB: ${TORRENT_WATCH_MAX_TOTAL_GB:-500}
+      TORRENT_WATCH_MIN_FREE_GB: ${TORRENT_WATCH_MIN_FREE_GB:-500}
+      TORRENT_WATCH_QBITTORRENT_USERNAME: ${TORRENT_WATCH_QBITTORRENT_USERNAME:-admin}
+      # The script's checksum (a test checks it): Compose doesn't recreate a container when only a file mounted into it
+      # changes, and a pull replaces that file, which leaves the running container's mount pointing at nothing.
+      TORRENT_WATCH_SCRIPT_SHA256: ef426c60ab3dc10e423373e9200f4ec4bd3d6eafa404e1837b9b215fba10202a
+    labels:
+      autoheal: "true"
+    volumes:
+      # What it has already seen, so that it adds each torrent once.
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/torrent-watch/config:/config
+    configs:
+      - source: torrent_watch
+        target: /app/torrent_watch.py
+    secrets:
+      - qbittorrent_password
+    healthcheck:
+      <<: *healthcheck
+      # That a poll has started recently; the index or qBittorrent being down is in its log, and a restart can't fix it.
+      test: ["CMD", "python", "-I", "/app/torrent_watch.py", "--healthcheck"]
 
   # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
   # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version. It accepts only a hub
@@ -427,6 +469,11 @@ networks:
   docker-proxy:
     internal: true
 
+# torrent-watch's script, mounted read-only from this repository (the backups copy only read-write mounts).
+configs:
+  torrent_watch:
+    file: ./scripts/torrent_watch.py
+
 # The certificate and key the Dozzle agent and the homelab's Dozzle hub authenticate each other with: one pair, made
 # once with `dozzle generate-certs`, the same on the hub and on every agent (docs/installing.md#dozzles-certificate).
 # Files on the host, owned by root: the agent runs as root without capabilities, so it can read only a file that root
@@ -448,3 +495,7 @@ secrets:
   # its SQLite database. Never committed, and never in the stack's backups.
   spoolman_db_password:
     file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/spoolman/secrets/db_password
+  # The password torrent-watch signs in to qBittorrent with, owned by PUID:PGID with mode 600
+  # (docs/installing.md#torrent-watch). Never committed, and never in the stack's backups.
+  qbittorrent_password:
+    file: ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/torrent-watch/secrets/qbittorrent_password

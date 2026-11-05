@@ -63,8 +63,10 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | The AMS app's logs (not backed up) | `CONFIG_ROOT/haspelsync/logs` | `/app/logs` |
 | Mealie's recipe images, its own backups and the keys it signs sign-ins with | `CONFIG_ROOT/mealie/config` | `/app/data` |
 | qBittorrent's settings, login and torrent list | `CONFIG_ROOT/qbittorrent-direct/config` | `/config` |
+| torrent-watch's record of what it has seen and added | `CONFIG_ROOT/torrent-watch/config` | `/config` |
 | Mealie's database URL (not backed up; [below](#mealies-database)) | `CONFIG_ROOT/mealie/secrets/database_url` | `/run/secrets/mealie_database_url`, read-only |
 | Spoolman's database password (not backed up; empty with SQLite; [below](#spoolmans-database)) | `CONFIG_ROOT/spoolman/secrets/db_password` | `/run/secrets/spoolman_db_password`, read-only |
+| qBittorrent's password, for torrent-watch (not backed up; [below](#torrent-watch)) | `CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password` | `/run/secrets/qbittorrent_password`, read-only |
 | The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
 
 The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
@@ -87,7 +89,7 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
    ```sh
    . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
      "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-     "$TORRENTS_PATH"
+     "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
@@ -95,7 +97,8 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
    ([below](#mealies-database)), and Spoolman the file for its database password, empty while it keeps SQLite
    ([below](#spoolmans-database)). social-to-mealie needs its API keys in `social-to-mealie.env` before it can import
    anything ([below](#social-to-mealie)), and qBittorrent a password of your own at its first sign-in
-   ([below](#qbittorrent)).
+   ([below](#qbittorrent)), which torrent-watch needs in a file before its container can be created
+   ([below](#torrent-watch)).
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -252,7 +255,7 @@ later: earlier versions let anyone who could reach it run commands in its contai
 ## qBittorrent
 
 qBittorrent is a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from
-torrent files and magnet links. No other service in the stack talks to it, and the only files it can reach are in
+torrent files and magnet links. Only torrent-watch talks to it, and the only files it can reach are in
 `TORRENTS_PATH` (mounted at `/downloads`), so keep the media library out of that folder. Every path you set in
 qBittorrent must be under `/downloads`: anything else is lost when the container is recreated.
 
@@ -279,6 +282,62 @@ has Copy → Magnet link.
 **To download**, use File → Add Torrent Link, which takes magnet links as well as URLs of torrent files. To have a
 browser open magnet links in it, use Tools → Register to handle magnet links, which browsers allow only over HTTPS, so
 through the reverse proxy.
+
+## torrent-watch
+
+torrent-watch adds new torrents from a model index to qBittorrent by itself. Every half hour it runs each of your watch
+terms through the index's search and adds what it hasn't seen before, under the category `watch`, in `/downloads/watch`.
+What a term matches the first time it runs is only recorded, so only torrents listed after that are added. With no
+terms it does nothing.
+
+Nobody is asked before a torrent is added, and it seeds from the same public IP address as everything else in
+qBittorrent ([above](#qbittorrent)), until you remove it. So a torrent is added only when all of these hold:
+
+- the index names its licence, and that is MIT, Apache-2.0, WTFPL or OpenMDW-1.1, none of which has terms to accept;
+- the index names its size, and that is within `TORRENT_WATCH_MAX_TORRENT_GB`;
+- what the category holds in qBittorrent stays within `TORRENT_WATCH_MAX_TOTAL_GB` with it added;
+- the disk keeps `TORRENT_WATCH_MIN_FREE_GB` free once this and everything else still downloading has finished.
+
+Anything it can't tell counts as a no, and it looks again at the next poll. It adds at most three torrents per poll. If
+the disk falls below `TORRENT_WATCH_MIN_FREE_GB` anyway, it stops its own unfinished downloads, and they stay stopped
+until you start them again. A torrent you remove from qBittorrent makes room under the category's limit, and is never
+added again.
+
+Once any torrent in qBittorrent has finished, the next poll switches it to forced seeding, so that qBittorrent's queue
+limits don't stop it seeding. That covers every torrent there, your own uploads and what you add by hand included, and
+what is already seeding at its first poll, though only while it has a watch term to run. It happens once per torrent:
+one you switch back or stop stays that way. Stopping for lack of space still touches only its own category. Forced
+torrents still count toward a global upload limit, if
+you've set one ([above](#qbittorrent)), so that is what leaves room for everything else on your connection.
+
+1. **Give it qBittorrent's password.** Compose can't create the container without this file, so on a new installation
+   choose the password now and set the same one at qBittorrent's first sign-in ([above](#qbittorrent)). As the user who
+   runs the stack, so that the file belongs to `PUID:PGID`. `read -s` keeps the password out of the shell's history:
+
+   ```sh
+   . ./.env
+   mkdir -p "$CONFIG_ROOT/torrent-watch/config"
+   install -d -m 700 "$CONFIG_ROOT/torrent-watch/secrets"
+   (umask 077 && read -rsp 'Password: ' pw && echo &&
+     printf '%s\n' "$pw" >"$CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password")
+   ```
+
+   It reads the file at every poll, so after changing the password in qBittorrent, write it here too.
+2. **Set what to watch and the limits** in `.env` ([interfaces.md](interfaces.md)), then
+   `docker compose up -d torrent-watch`. Set `TORRENT_WATCH_MIN_FREE_GB` to suit the disk, above all if the media
+   library shares it.
+3. **Read its log**: `docker compose logs torrent-watch`. A new term says how many torrents it already matches, and
+   each torrent it adds or leaves out gets a line.
+
+**Watch terms** are separated by commas. Words (`qwen gguf`) match any model with those words in its name, whoever
+made it; one author with a slash after it (`someone/`) keeps only that author's models. Keep them narrow: the index's
+search stops at about 90 rows, best-seeded first, so a new torrent with no seeders can miss a long list. The log warns
+about a term that matches 75 or more.
+
+**The index** must answer `GET /s/<words>` (words joined with `+`) with one line per torrent, starting with
+`<author>/<model>` and ending with its magnet link, and `GET /api/models?q=<author>/<model>` with JSON whose `models`
+give each one's `id`, `license` and `sizeBytes`. If it stops answering like that, nothing is added, and the log says
+why. Its word for a licence is all this has to go on: read the licence before relying on a model.
 
 ## Scheduled backups
 
@@ -359,6 +418,8 @@ has none; [rebuilding.md](rebuilding.md#an-encrypted-backup)).
   router or with Docker's own `DOCKER-USER` rules, and use a reverse proxy's access lists for names you give them.
 - **qBittorrent is on the public internet** by design: peers see your public IP address. Forward only its peer port
   (50881), never its web UI, and give it only files you're free to share ([qBittorrent](#qbittorrent)).
+- **torrent-watch adds torrents without asking**, under that same address. Watch only what you're free to share, and
+  set its limits to suit the disk ([torrent-watch](#torrent-watch)).
 - **Turn on logins where a service offers them**, with long, unique passwords: HaspelSync's under Settings →
   Network access. Mealie always has one: change its first account's e-mail and password at once
   ([Mealie's database](#mealies-database), step 3).
