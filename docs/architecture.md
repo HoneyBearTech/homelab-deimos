@@ -2,8 +2,8 @@
 
 homelab-deimos is the Docker Compose definition of **Deimos**, a homelab server for media processing, 3D printing
 and the household: Tdarr, which keeps the media library in consistent formats using the GPU, the services that track
-the 3D printers' filament, and Mealie, for recipes and meal plans, with social-to-mealie to import recipes from
-social-media posts. Deimos is an Ubuntu 24.04 virtual machine on amd64 with an NVIDIA GPU passed through.
+the 3D printers' filament, Mealie, for recipes and meal plans, with social-to-mealie to import recipes from
+social-media posts, and qBittorrent, to share files by torrent. Deimos is an Ubuntu 24.04 virtual machine on amd64 with an NVIDIA GPU passed through.
 The repository holds configuration, not application code: the services run from their upstream images, pinned by
 digest.
 
@@ -19,6 +19,7 @@ digest.
 | AMS app ([HaspelSync](https://github.com/Rdiger-36/HaspelSync)) | the project's own image | Listens to the Bambu Lab printers over MQTT, recognises the spools in their automatic material systems, links them to Spoolman's spools and books what each print used, read from the print's sliced file (fetched over FTPS) |
 | [Mealie](https://github.com/mealie-recipes/mealie) | the project's own image | Recipes (typed in, or imported from a recipe's web page), meal plans and shopping lists, for the household's accounts; web UI and REST API. Its database is PostgreSQL on a database server outside this stack |
 | [social-to-mealie](https://github.com/GerardPolloRebozado/social-to-mealie) | the project's own image | Turns a recipe posted on Instagram, TikTok, YouTube Shorts and similar sites into a Mealie recipe: fetches the post (yt-dlp, or gallery-dl for picture posts), has OpenAI's API transcribe its audio and write the recipe, and posts it to Mealie through Mealie's API. Keeps no data; no login of its own |
+| [qBittorrent](https://www.qbittorrent.org/) | LinuxServer.io's image | A torrent client for files you're free to share: makes torrents, seeds them, and downloads from torrent files and magnet links; web UI and REST API, with its own login. No other service in the stack talks to it, and it reaches only its own folder |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
 agent) come from their own projects; this stack doesn't include or manage them.
@@ -39,12 +40,14 @@ agent) come from their own projects; this stack doesn't include or manage them.
 | The database server | Holds Mealie's database (PostgreSQL), and backs it up |
 | Websites | Serve the recipe pages Mealie is asked to import, and the posts social-to-mealie is asked to import |
 | OpenAI's API | Transcribes the posts' audio and writes their recipes, for social-to-mealie |
+| Peers and trackers on the internet | Exchange torrents' data with qBittorrent, and see the public IP address it reaches them from |
 | The homelab's Dozzle | Connects to the Dozzle agent's port to show this host's container logs in its web UI |
 
 ## Data flow
 
 ```
-LAN clients ──HTTP(S) via reverse proxy──▶ Tdarr UI · Spoolman UI/API · AMS app · Mealie UI/API · social-to-mealie
+LAN clients ──HTTP(S) via reverse proxy──▶ Tdarr UI · Spoolman UI/API · AMS app · Mealie UI/API · social-to-mealie ·
+                                           qBittorrent UI/API
 
 Tdarr ──read/write──▶ media library (network share or local disk)
 Tdarr ──NVIDIA runtime──▶ GPU
@@ -61,6 +64,10 @@ social-to-mealie ──HTTPS──▶ the posts it is asked to import
 social-to-mealie ──HTTPS──▶ OpenAI's API: transcription and the recipe
 social-to-mealie ──REST──▶ Mealie (inside the stack)
 
+qBittorrent ──read/write──▶ its torrents' files (network share or local disk)
+qBittorrent ◀──BitTorrent, port 50881──▶ peers on the internet
+qBittorrent ──HTTP(S), UDP──▶ trackers
+
 autoheal ──(internal network)──▶ socket-proxy ──read-only socket──▶ Docker: restarts unhealthy containers
 Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only socket──▶ Docker: container logs
 ```
@@ -68,7 +75,7 @@ Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only soc
 Each service keeps its settings and database in its own folder under `CONFIG_ROOT` (`CONFIG_ROOT/<app>/config`, with
 any other folder it needs beside it; see [interfaces.md](interfaces.md#volumes-and-mounts)), which is what
 `scripts/backup.sh` archives. No app data is in a named Docker volume, so a `docker volume prune` can't reach it. The
-media library, the logs and the transcode cache are never archived. Mealie's database isn't here either: its server
+media library, qBittorrent's torrents' files, the logs and the transcode cache are never archived. Mealie's database isn't here either: its server
 backs it up.
 
 ## How changes reach the host

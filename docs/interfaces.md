@@ -14,8 +14,9 @@ setting marked required stops `docker compose` with an error naming it when it's
 | --- | --- | --- | --- |
 | `COMPOSE_FILE` | no | `compose.yaml:compose.gpu.yaml` | Set on a host with an NVIDIA GPU, so Tdarr gets it ([GPU](#gpu)). Leave unset without one. |
 | `TZ` | yes | `Etc/UTC` | Time zone (tz database name) for logs and schedules. |
-| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman, the AMS app and Mealie run as; Tdarr's must be able to read and write the media library. |
+| `PUID`, `PGID` | yes | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie and qBittorrent run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH`. |
 | `MEDIA_PATH` | yes | `/srv/media` | Host path of the media library. Never backed up by this stack. |
+| `TORRENTS_PATH` | yes | `/srv/torrents` | Host folder qBittorrent keeps its torrents' files in, the only files it can reach. Keep the media library out of it. Never backed up by this stack. |
 | `CONFIG_ROOT` | yes | `/srv/config` | Host folder holding every app's data, one folder per app: `CONFIG_ROOT/<app>/config` and any other folder beside it ([where data lives](installing.md#where-data-lives)). Never inside `/var/lib/docker/volumes`. |
 | `SPOOLMAN_PUBLIC_URL` | yes | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at; the AMS app's links point there. |
 | `MEALIE_PUBLIC_URL` | yes | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its `BASE_URL`); the links in its notifications and shared recipes point there, and so do the links social-to-mealie shows after an import. |
@@ -64,6 +65,11 @@ social-to-mealie keeps the yt-dlp built into its image (`YTDLP_VERSION: none`; b
 one from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), and reaches Mealie inside the stack at
 `http://mealie:9000`; the recipe links it shows point at `MEALIE_PUBLIC_URL`.
 
+qBittorrent listens for peers on port 50881 (`TORRENTING_PORT`) and serves its web UI on port 8091 (`WEBUI_PORT`).
+The web UI's port is the same on both sides of the mapping, because it answers `Unauthorized` to a request whose
+`Host` header names a port other than its own. Everything else, its login included, is in its own settings
+(`CONFIG_ROOT/qbittorrent-direct/config`), changed in its web UI, which the backups cover.
+
 ## Services and ports
 
 | Service | Image | Host port → container | What |
@@ -74,14 +80,16 @@ one from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), a
 | AMS app (HaspelSync) | `ghcr.io/rdiger-36/haspelsync` | 4000 → 4000 | Web UI (LAN only; set a password under Settings → Network access) |
 | Mealie | `ghcr.io/mealie-recipes/mealie` | 9925 → 9000 | Web UI and REST API (LAN only; its own login) |
 | social-to-mealie | `ghcr.io/gerardpollorebozado/social-to-mealie` | 9926 → 3000 | Web UI and its import API (LAN only; no login of its own) |
+| qBittorrent | `lscr.io/linuxserver/qbittorrent` | 8091 → 8091 | Web UI and API (LAN only; its own login) |
+| | | 50881 → 50881, TCP and UDP | Peers; the one port to forward from the router |
 | autoheal | `willfarrell/autoheal` | none | Restarts containers labelled `autoheal: "true"` whose health check fails |
 | socket-proxy | `lscr.io/linuxserver/socket-proxy` | none (internal network) | The only way autoheal reaches Docker: list, inspect, restart, stop |
 | Dozzle agent | `amir20/dozzle` | 7007 → 7007 | Agent for the homelab's Dozzle on another host (LAN only); no web UI of its own |
 
 Exact versions and digests are in [`compose.yaml`](../compose.yaml). Each service has a health check: Tdarr's
 `/api/v2/status`, Spoolman's `/api/v1/health`, the AMS app's web UI, Mealie's own `/app/healthcheck.sh`
-(`/api/app/about`), social-to-mealie's `/manifest.webmanifest`, autoheal's process, the proxy's `/_ping` and the
-Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to stop
+(`/api/app/about`), social-to-mealie's `/manifest.webmanifest`, qBittorrent's login page, autoheal's process, the
+proxy's `/_ping` and the Dozzle agent's own `/dozzle healthcheck`. autoheal checks every 10 seconds and gives a service 30 seconds to stop
 before restarting it; a service gets 10 minutes after it starts before failed checks count.
 
 ## GPU
@@ -106,6 +114,8 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/app/printers` | `CONFIG_ROOT/haspelsync/config` | AMS app: printer list with the printers' access codes, and the settings saved in its web UI |
 | `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
 | `/app/data` | `CONFIG_ROOT/mealie/config` | Mealie: recipe images, its own backups and the keys it signs sign-ins with (its database is on the database server) |
+| `/config` | `CONFIG_ROOT/qbittorrent-direct/config` | qBittorrent: settings, login and torrent list |
+| `/downloads` | `TORRENTS_PATH` | qBittorrent: its torrents' files (read-write; never backed up) |
 | `/run/secrets/spoolman_db_password` (read-only; a Docker secret) | `CONFIG_ROOT/spoolman/secrets/db_password`, owned by `PUID:PGID`, mode `600`, no line break; empty with SQLite ([installing.md](installing.md#spoolmans-database)) | Spoolman (`SPOOLMAN_DB_PASSWORD_FILE` points at it) |
 | `/run/secrets/mealie_database_url` (read-only; a Docker secret) | `CONFIG_ROOT/mealie/secrets/database_url`, owned by `PUID:PGID`, mode `600` ([installing.md](installing.md#mealies-database)) | Mealie (`POSTGRES_URL_OVERRIDE_FILE` points at it) |
 | `/var/run/docker.sock` (read-only) | the Docker socket | socket-proxy and the Dozzle agent (allowed exceptions, see below) |
@@ -116,8 +126,8 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | Label | Meaning |
 | --- | --- |
 | `org.honeybeartech.deimos.allow.<rule>` | Lets one service break one policy rule; the value is the reason, and must not be empty. Rules: `image`, `digest`, `latest`, `build`, `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-network`, `host-pid`, `docker-socket`, `devices`, `healthcheck` ([security.md](security.md#policy)). In use: socket-proxy (`docker-socket`), autoheal (`latest`), the Dozzle agent (`docker-socket`). |
-| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, socket-proxy and the Dozzle agent. |
-| `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`. |
+| `autoheal` | `"true"` on every service autoheal may restart: Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie, qBittorrent, socket-proxy and the Dozzle agent. |
+| `org.honeybeartech.deimos.backup.skip` | Container paths (comma-separated, exact) that `scripts/backup.sh` never archives and `scripts/restore.sh` refuses to write, even if a backup lists them. Tdarr: `/media`, `/temp`, `/app/logs`; AMS app: `/app/logs`; qBittorrent: `/downloads`. |
 | `org.honeybeartech.deimos.backup.exclude` | Paths inside a service's data mounts (comma-separated, exact container paths, at any depth) that `scripts/backup.sh` leaves out of the mount's archive and `scripts/restore.sh` leaves in place. A path that isn't inside one of the service's data mounts, or contains `..` or a pattern character (`*?[\`), makes both fail before anything stops. Not in use. |
 
 ## Commands
@@ -128,7 +138,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `make check` | `docker compose config --format json \| python scripts/check_compose.py`: the policy check |
 | `python scripts/check_compose.py [FILE] [--sbom OUT]` | Checks a resolved Compose config (from `FILE` or stdin); `--sbom` also writes a CycloneDX 1.6 SBOM of the images. Exit 0 = no violations, 1 = violations (one line each), 2 = unreadable input |
 | `make test`, `make lint` | The checker's tests and the linters |
-| `scripts/backup.sh [DIR]` | Archives every service's data mounts (every read-write volume or bind mount except the Docker socket, anonymous volumes and the paths in the service's `backup.skip` label: the media library, the transcode cache and the logs; a mount inside another mount is archived on its own and left out of the outer archive), `.env` and any `<service>.env` into `DIR` (default `backups/<date>-<time>`, gitignored) with a `MANIFEST`, `NETWORKS` (the address ranges of networks the stack joins but doesn't create), `VERSION` (the checkout's `git describe`) and `SHA256SUMS`, all mode `600`. Each service is stopped only while its own mounts are copied and started again (with any service Compose stopped along with it) before the copies are compressed (with `pigz` when it's installed, else `gzip`). Leaves out the paths a service's `org.honeybeartech.deimos.backup.exclude` label lists. Before anything stops it waits for a deploy by the pull agent to finish and holds the agent's lock until it exits ([upgrading.md](upgrading.md#backing-up); up to 30 minutes, then it fails before anything stops); only where the agent keeps state for the stack, in `$HOMELAB_PULL_STATE_DIR/deimos` (default `${XDG_STATE_HOME:-~/.local/state}/homelab-pull/deimos`). If stopping a service fails while its container is still on its way down (a process stuck writing to a network share can outlast Docker's stop), it waits up to `BACKUP_STOP_WAIT` seconds (default 120) for the container to exit and carries on; if it still runs then, the backup fails, and the services are started again only after a second wait. Fails, naming them, if any service that was running when it began isn't running again at the end. Exit 0 = backup complete |
+| `scripts/backup.sh [DIR]` | Archives every service's data mounts (every read-write volume or bind mount except the Docker socket, anonymous volumes and the paths in the service's `backup.skip` label: the media library, the transcode cache, the logs and qBittorrent's torrents' files; a mount inside another mount is archived on its own and left out of the outer archive), `.env` and any `<service>.env` into `DIR` (default `backups/<date>-<time>`, gitignored) with a `MANIFEST`, `NETWORKS` (the address ranges of networks the stack joins but doesn't create), `VERSION` (the checkout's `git describe`) and `SHA256SUMS`, all mode `600`. Each service is stopped only while its own mounts are copied and started again (with any service Compose stopped along with it) before the copies are compressed (with `pigz` when it's installed, else `gzip`). Leaves out the paths a service's `org.honeybeartech.deimos.backup.exclude` label lists. Before anything stops it waits for a deploy by the pull agent to finish and holds the agent's lock until it exits ([upgrading.md](upgrading.md#backing-up); up to 30 minutes, then it fails before anything stops); only where the agent keeps state for the stack, in `$HOMELAB_PULL_STATE_DIR/deimos` (default `${XDG_STATE_HOME:-~/.local/state}/homelab-pull/deimos`). If stopping a service fails while its container is still on its way down (a process stuck writing to a network share can outlast Docker's stop), it waits up to `BACKUP_STOP_WAIT` seconds (default 120) for the container to exit and carries on; if it still runs then, the backup fails, and the services are started again only after a second wait. Fails, naming them, if any service that was running when it began isn't running again at the end. Exit 0 = backup complete |
 | `scripts/scheduled-backup.sh` | Runs `scripts/backup.sh` into `BACKUP_DIR/<date>-<time>`, copies it to `BACKUP_REMOTE` with rsync (`SHA256SUMS` last; with `BACKUP_AGE_RECIPIENT`, only the encrypted `backup.tar.age` and its `SHA256SUMS`), deletes all but the newest `BACKUP_REMOTE_KEEP` there and `BACKUP_KEEP` here, and reports to `BACKUP_PING_URL` ([`backup.env`](#backupenv)). Run nightly by the systemd user units in `deploy/systemd/`. Exit 0 = backup complete and copied |
 | `scripts/restore.sh [--yes] DIR [SERVICE...]` | Verifies `DIR/SHA256SUMS`, checks the `MANIFEST`, creates missing containers and volumes, asks for confirmation (unless `--yes`), stops the services, replaces the contents of each listed mount with its archive (owners and modes kept), and starts what was running. Writes only mounts the service still has read-write; never the Docker socket, a path in the service's `backup.skip` label, another mount inside the one it restores, or a path in its `backup.exclude` label. A service that bind-mounts a folder inside a mount it restores is stopped and started again with it, so it doesn't keep the replaced folder. Waits for and holds the pull agent's lock like `scripts/backup.sh`. An encrypted copy is decrypted first ([rebuilding.md](rebuilding.md#an-encrypted-backup)) |
 | `make smoke` | `scripts/smoke-test.sh`: starts every service under a separate Compose project with throwaway directories, no GPU and no published ports, waits until all are healthy, round-trips a backup and restore over every data mount (checking `NETWORKS` and `VERSION`, that skipped mounts were neither archived nor overwritten and that excluded paths were neither archived nor deleted; a test container that mounts a folder inside another app's data is started again with it), runs the scheduled backup against a stand-in backup server (and, when `age` is installed, the encrypted copy: only the archive and its checksums leave, the right key opens it, another key doesn't), makes a test container unhealthy and checks that autoheal restarts it, then removes what it created. A stack's own steps, when it has any, are in `scripts/smoke-stack.sh` (`smoke_prepare`, `smoke_check`); a `*_SUBNET` setting gets a free address range. Exit 0 = all passed |
@@ -142,7 +152,8 @@ other machines connect to port 8266; the AMS app connects to each printer on the
 (port 8883) and FTPS (port 990), and to Spoolman inside the stack; Mealie connects to its PostgreSQL server (port
 5432, TLS) and fetches the recipe pages and images it is asked to import, from any website; social-to-mealie fetches
 the posts it is asked to import from their sites, sends their audio and text to OpenAI's API (`api.openai.com`), and
-posts the recipe to Mealie inside the stack. The scheduled backup to
+posts the recipe to Mealie inside the stack; qBittorrent connects to the trackers its torrents name and to peers
+anywhere on the internet (and they connect to it, on port 50881, where the router forwards it). The scheduled backup to
 `BACKUP_REMOTE` (rsync,
 usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 

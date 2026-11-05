@@ -8,6 +8,11 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
+- **For qBittorrent, set `TORRENTS_PATH` in `.env` and create its folders before deploying this**, as your user:
+  `. ./.env && mkdir -p "$TORRENTS_PATH" "$CONFIG_ROOT/qbittorrent-direct/config"`. `TORRENTS_PATH` is a new required
+  setting: without it Compose stops with an error naming it, and nothing deploys. After the deploy, set its password
+  and check the address it uses ([docs/installing.md](docs/installing.md#qbittorrent)). Port 8091 must be free on the
+  LAN, and 50881 is the one port to forward from the router.
 - **For social-to-mealie, create `social-to-mealie.env` before deploying this**
   ([docs/installing.md](docs/installing.md#social-to-mealie)): an OpenAI API key (with a spending limit), a Mealie API
   token of a user of its own (not an administrator), and the two models. Without it the stack deploys and
@@ -102,6 +107,12 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Added
 
+- **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port
+  50881: a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from torrent
+  files and magnet links. It has a new required setting, `TORRENTS_PATH`, the only files it can reach, which is never
+  backed up; its settings and torrent list are. Its peers see the host's public IP address: only the peer port is meant
+  to be forwarded, never the web UI. Rebuilds of the pinned version merge by themselves; a new qBittorrent is bumped by
+  hand. The smoke test signs in, adds a magnet link, makes a torrent from a folder and checks that it seeds.
 - **social-to-mealie** 1.8.2 on port 9926: turns a recipe posted on Instagram, TikTok, YouTube Shorts and the like
   into a Mealie recipe, using OpenAI's API, and posts it to Mealie inside the stack (`http://mealie:9000`; its links
   point at `MEALIE_PUBLIC_URL`). Its API keys and models are in a gitignored `social-to-mealie.env` (template

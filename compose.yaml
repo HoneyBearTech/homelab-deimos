@@ -262,6 +262,62 @@ services:
           fetch("http://127.0.0.1:3000/manifest.webmanifest")
           .then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))
 
+  qbittorrent-direct:
+    <<: *hardened
+    # A torrent client for files you're free to share: it makes torrents, seeds them, and downloads from torrent files
+    # and magnet links. Its peers see the public address this host reaches the internet from (docs/security.md), and no
+    # other app in this stack talks to it.
+    # linuxserver.io's version tag names qBittorrent and the libtorrent it is built on: 2.1, whose disk I/O reads and
+    # writes files instead of mapping them into memory, which suits a network share (docs/dependencies.md#qbittorrent).
+    # Dependabot follows this tag's rebuilds but can't read it as a version: a new qBittorrent is bumped by hand.
+    image: lscr.io/linuxserver/qbittorrent:version-5.3.0_v2.1.2@sha256:75ecbb1c89ab7b0a21c4bde40b4820e4f1649d2d56d83b91913422155e8d2a5f
+    container_name: qbittorrent-direct
+    # Its init (s6-overlay) runs as root: it takes ownership of the data for PUID:PGID (CHOWN), runs the app as that
+    # user (SETUID, SETGID) and stops it cleanly on shutdown (KILL: without it the app is killed after the timeout).
+    # Its root filesystem stays writable: the init runs from /run (a tmpfs there is mounted noexec, so it can't
+    # start) and writes to the image's own directories.
+    # DAC_OVERRIDE: the init, as root, writes the default settings into a data directory that belongs to PUID.
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETUID
+      - SETGID
+      - KILL
+    restart: unless-stopped
+    # Time to finish writing to a network share and exit cleanly on stop (as for the nightly backup) instead of being
+    # killed after Docker's default 10 s in the middle of a write.
+    stop_grace_period: 1m
+    # A torrent client keeps a file open for every file of every active torrent, and containerd 2.x gives containers a
+    # default limit of 1024 open files, which a few large torrents can use up ("Too many open files").
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    labels:
+      autoheal: "true"
+      # The torrents' files are large, and live on storage of their own; only the settings are backed up.
+      org.honeybeartech.deimos.backup.skip: "/downloads"
+    environment:
+      TZ: ${TZ:?set TZ in .env}
+      PUID: ${PUID:?set PUID in .env}
+      PGID: ${PGID:?set PGID in .env}
+      # The same port on both sides of the mapping below: qBittorrent answers "Unauthorized" to a request whose Host
+      # header names a port other than its own.
+      WEBUI_PORT: 8091
+      TORRENTING_PORT: 50881
+    ports:
+      - "8091:8091" # web UI and API: keep it on the LAN, and never forward it
+      - "50881:50881" # peers: the one port to forward from the router
+      - "50881:50881/udp"
+    volumes:
+      - ${CONFIG_ROOT:?set CONFIG_ROOT in .env}/qbittorrent-direct/config:/config
+      # Every path set in qBittorrent must be under /downloads: anything else is lost when the container is recreated.
+      - ${TORRENTS_PATH:?set TORRENTS_PATH in .env}:/downloads
+    healthcheck:
+      <<: *healthcheck
+      # The web UI's login page answers without a login.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8091/"]
+
   # A Dozzle agent: it serves this host's container logs to the homelab's Dozzle on another host, which shows the
   # logs of every host in one web UI. It has no web UI of its own. Keep it on the hub's version. It accepts only a hub
   # that presents the homelab's own certificate and key (the secrets at the end), never the pair built into every

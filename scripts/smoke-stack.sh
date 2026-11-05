@@ -25,6 +25,7 @@ smoke_check() {
   dozzle_check
   mealie_check
   social_to_mealie_check
+  qbittorrent_check
 }
 
 # The throwaway CONFIG_ROOT.
@@ -194,4 +195,56 @@ social_to_mealie_check() {
   [[ $logs != *"ead-only file system"* && $logs != *EROFS* ]] ||
     fail "social-to-mealie tried to write to its read-only root filesystem"
   echo "social-to-mealie: keeps its own yt-dlp, refuses non-http(s) URLs, reaches Mealie, and has a read-only root"
+}
+
+# qBittorrent, signed in with the temporary password it logs at each start: that its web UI offers the torrent creator
+# and the magnet link handler, that it accepts a magnet link, and that it makes a torrent from a folder and seeds it.
+# Everything it adds is removed again, because this check also runs after the restore.
+qbt_service=qbittorrent-direct
+qbt_url=http://127.0.0.1:8091
+qbt_magnet_hash=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+# curl in the container, keeping the session in its /tmp.
+qbt_api() { compose exec -T "$qbt_service" curl -sS -b /tmp/smoke-session -c /tmp/smoke-session "$@" </dev/null; }
+
+qbittorrent_check() {
+  local password page task out
+  password=$(compose logs --no-color "$qbt_service" |
+    sed -n 's/.*temporary password is provided for this session: //p' | tail -n 1)
+  [ -n "$password" ] || fail "qBittorrent logged no temporary password"
+  qbt_api --data-urlencode username=admin --data-urlencode "password=$password" "$qbt_url/api/v2/auth/login" >/dev/null
+  out=$(qbt_api "$qbt_url/api/v2/app/version")
+  [[ $out == v* ]] || fail "qBittorrent refused the login: $out"
+  page=$(qbt_api "$qbt_url/")
+  [[ $page == *registerMagnetHandler* && $page == *torrentCreator* ]] ||
+    fail "qBittorrent's web UI doesn't offer the magnet link handler and the torrent creator"
+
+  qbt_api --data-urlencode "urls=magnet:?xt=urn:btih:$qbt_magnet_hash&dn=smoke-magnet" \
+    "$qbt_url/api/v2/torrents/add" >/dev/null
+  out=$(qbt_api --get -d "hashes=$qbt_magnet_hash" "$qbt_url/api/v2/torrents/info")
+  [[ $out == *"$qbt_magnet_hash"* ]] || fail "qBittorrent didn't take a magnet link: $out"
+
+  compose exec -T "$qbt_service" sh -c \
+    'mkdir -p /downloads/smoke-model && head -c 1048576 /dev/urandom >/downloads/smoke-model/weights.bin' </dev/null
+  task=$(qbt_api -d sourcePath=/downloads/smoke-model -d format=hybrid -d startSeeding=true \
+    "$qbt_url/api/v2/torrentcreator/addTask" | sed -n 's/.*"taskID":"\([^"]*\)".*/\1/p')
+  [ -n "$task" ] || fail "qBittorrent didn't start making a torrent"
+  for _ in $(seq 1 30); do
+    out=$(qbt_api --get -d filter=seeding "$qbt_url/api/v2/torrents/info")
+    [[ $out != *'"name":"smoke-model"'* ]] || break
+    sleep 1
+  done
+  [[ $out == *'"name":"smoke-model"'* ]] ||
+    fail "qBittorrent isn't seeding the torrent it made: $(qbt_api --get -d "taskID=$task" \
+      "$qbt_url/api/v2/torrentcreator/status")"
+
+  qbt_api -d hashes=all -d deleteFiles=true "$qbt_url/api/v2/torrents/delete" >/dev/null
+  for _ in $(seq 1 30); do
+    out=$(qbt_api "$qbt_url/api/v2/torrents/info")
+    [ "$out" != "[]" ] || break
+    sleep 1
+  done
+  [ "$out" = "[]" ] || fail "qBittorrent didn't remove its test torrents: $out"
+  compose exec -T "$qbt_service" rm -rf /downloads/smoke-model /tmp/smoke-session </dev/null
+  echo "qBittorrent: signs in, takes a magnet link, and makes and seeds a torrent"
 }

@@ -50,6 +50,7 @@ file changes with them, in the same pull request.
 - **Configure the services' internals** (Tdarr libraries and flows, Spoolman's spools). Those are configured in
   each service and live in its data, which the backups cover.
 - **Back up the media library.** It is too large; it belongs to the storage that holds it.
+- **Provide a VPN** or otherwise hide qBittorrent's traffic. That's a decision for each operator and network.
 - **Store secrets.** No logins, tokens or keys in the repository, encrypted or not.
 - **Auto-update from registries.** Every version change is a commit in `main` that passed CI; the server applies
   only those.

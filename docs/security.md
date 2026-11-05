@@ -65,6 +65,7 @@ transcoding with these settings is checked on the host, not in CI.
 | ams | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID` rather than its image's root, and writes only its printers and logs directories, which belong to that user |
 | mealie | none | yes (`/tmp` in memory) | Runs as `PUID`:`PGID`; its image's start as root (changing its user's ids, taking ownership of `/app`, switching user) is skipped when it already runs as `PUID`. Writes only its data directory, which belongs to that user, and reads its database URL from a secret file that belongs to that user too (mode `600`). Limited to 1000 MB of memory |
 | social-to-mealie | none | yes (`/tmp`, `/app/.next/cache` in memory) | Its image runs it as its own user, which writes only temporary files (the downloaded post, its audio) and Next.js' cache. Keeps the yt-dlp built into its pinned image instead of installing the newest from PyPI at each start (`YTDLP_VERSION: none`) |
+| qbittorrent-direct | `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID`, `KILL` | no | Its init (s6-overlay) runs as root: it takes ownership of the data for `PUID:PGID`, writes the default settings into a directory that belongs to that user, runs the app as that user and stops it cleanly on shutdown. The app runs as that user with no capabilities. Writable root: the init runs from `/run` and writes to the image's own directories |
 | dozzle-agent | none | yes (`/tmp`, `/data` in memory) | Only reads the socket and its certificate and key, all owned by root; writes its address file to `/tmp` and the notification settings the Dozzle hub sends it to `/data`. The hub keeps those settings and sends them again each time it starts (an agent restarted while the hub runs has none until then) |
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
@@ -75,8 +76,8 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 
 ## What it doesn't protect
 
-- **The services themselves.** A vulnerability in Tdarr, Spoolman, the AMS app, Mealie or social-to-mealie is that
-  project's to fix; homelab-deimos ships the fixed version once it's released ([dependencies.md](dependencies.md)).
+- **The services themselves.** A vulnerability in Tdarr, Spoolman, the AMS app, Mealie, social-to-mealie or qBittorrent
+  is that project's to fix; homelab-deimos ships the fixed version once it's released ([dependencies.md](dependencies.md)).
   social-to-mealie 1.8.1 and earlier let anyone who reached it run commands in its container
   (GHSA-r63c-m6m6-mvh3, fixed in 1.8.2); this stack starts at 1.8.2.
 - **The media library.** Tdarr rewrites files in it by design. A bad flow or a faulty Tdarr version can damage
@@ -92,6 +93,11 @@ offer nothing else. Without capabilities that root can only reach what it owns (
   http(s) address, spend its OpenAI key and add recipes to Mealie as its user. Its OpenAI key and Mealie token are in
   its environment (`social-to-mealie.env`), so in `docker inspect` and in the stack's backups. Give the OpenAI key a
   spending limit, give the Mealie token a user of its own (not an administrator), and keep it on the LAN.
+- **The public IP address qBittorrent reaches the internet from.** Every peer and tracker sees it, along with what
+  the torrent is, and this stack does nothing to hide it. Whether traffic goes through a VPN is decided by the network
+  the host is on, so check the address the client reports ([installing.md](installing.md#qbittorrent)), and give it
+  only files you're free to share. It is also the one service here that accepts connections from the internet: only its
+  peer port may be forwarded, never its web UI. A file it downloads is untrusted until you've checked it.
 - **Mealie's database.** Its recipes and accounts are on the database server, which protects and backs them up;
   this stack holds only the URL with the login's password (a secret file) and connects over TLS
   (`sslmode=require`, which doesn't check the server's certificate).

@@ -63,6 +63,23 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 - **Nothing on the host updates from a registry.** Auto-updaters such as Watchtower are not used: they would run
   versions nobody reviewed. The pull agent only applies commits merged into `main`.
 
+### qBittorrent
+
+Two things about qBittorrent differ from the other images:
+
+- **Its `version-` tag names the libtorrent too**: `version-5.3.0_v2.1.2` is qBittorrent 5.3.0 built on libtorrent
+  2.1.2, pointing at the newest build of exactly that pair. Dependabot can't read that as a version (its tag parser
+  stops at the `_v`), so it proposes only rebuilds of the pinned tag, which merge by themselves like other images'
+  rebuilds and always keep libtorrent 2.1.2. A new qBittorrent version is a pull request by hand: read its release
+  notes (a new minor version can migrate the settings one way), check which libtorrent the build uses, and back up
+  first. The tags Dependabot could follow are worse here: the plain version and `latest` move to whichever libtorrent
+  linuxserver.io builds next, so a rebuild under one of them could change the libtorrent unattended.
+- **libtorrent 2.1 or newer, never memory-mapped files.** libtorrent 2.0 maps every file it reads or writes into
+  memory, which suits a network share badly: the share's page cache shows up as qBittorrent's memory, and every page
+  fault waits on the network. libtorrent 2.1 reads and writes the files from a pool of threads, and that is what
+  "Default" means for the disk I/O type on this build. The disk I/O type is a qBittorrent setting, not a Compose one
+  ([installing.md](installing.md#qbittorrent)).
+
 ## Policy for vulnerabilities in dependencies
 
 Known vulnerabilities are found through Dependabot alerts, the services' and images' own advisories, and a

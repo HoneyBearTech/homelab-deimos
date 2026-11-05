@@ -39,7 +39,9 @@ sudo apt install -y unattended-upgrades git
 Give the machine the same address the old one had (or update everything that reaches it by address: reverse
 proxy hosts, monitoring, anything that talks to Spoolman's API).
 
-Mount the media library at the same host path as before (`MEDIA_PATH` in the backup's `.env`).
+Mount the media library and qBittorrent's torrents' folder at the same host paths as before (`MEDIA_PATH` and
+`TORRENTS_PATH` in the backup's `.env`). Neither is in the backups, and qBittorrent's torrents need their files back
+where they were to keep seeding.
 
 ## 2. The GPU driver
 

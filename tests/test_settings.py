@@ -6,14 +6,20 @@ import yaml
 ROOT = Path(__file__).parent.parent
 CONFIG_ROOT = "${CONFIG_ROOT:?set CONFIG_ROOT in .env}"
 # Each app's data mounts: its folders under CONFIG_ROOT/<app> (the app's lowercase name, its container name) and the
-# container path each is mounted at. The media library (MEDIA_PATH) isn't app data and stays a setting of its own.
+# container path each is mounted at. The media library (MEDIA_PATH) and the torrents' files (TORRENTS_PATH) aren't app
+# data and stay settings of their own.
 APPS = {
     "tdarr": ("tdarr", {"server": "/app/server", "config": "/app/configs", "logs": "/app/logs", "transcode": "/temp"}),
     "spoolman": ("spoolman", {"config": "/home/app/.local/share/spoolman"}),
     "ams": ("haspelsync", {"config": "/app/printers", "logs": "/app/logs"}),
     "mealie": ("mealie", {"config": "/app/data"}),
+    "qbittorrent-direct": ("qbittorrent-direct", {"config": "/config"}),
 }
-NOT_APP_DATA = ("${MEDIA_PATH:?set MEDIA_PATH in .env}:/media", "/var/run/docker.sock:/var/run/docker.sock:ro")
+NOT_APP_DATA = (
+    "${MEDIA_PATH:?set MEDIA_PATH in .env}:/media",
+    "${TORRENTS_PATH:?set TORRENTS_PATH in .env}:/downloads",
+    "/var/run/docker.sock:/var/run/docker.sock:ro",
+)
 
 
 def read(path: str) -> str:
@@ -80,6 +86,13 @@ def test_every_env_file_is_optional_gitignored_and_has_a_committed_template() ->
             assert path.endswith(".env"), f"{name}: {path} isn't a <service>.env"
             assert "*.env" in ignored, f"{name}: {path} isn't gitignored"
             assert (ROOT / f"{path}.example").is_file(), f"{name}: {path}.example is missing"
+
+
+def test_qbittorrent_web_ui_has_the_same_port_on_both_sides() -> None:
+    # It answers "Unauthorized" to a request whose Host header names a port other than its own.
+    service = compose()["services"]["qbittorrent-direct"]
+    port = service["environment"]["WEBUI_PORT"]
+    assert f"{port}:{port}" in service["ports"]
 
 
 def test_spoolman_reads_its_password_from_its_secret_and_its_server_only_from_spoolman_env() -> None:
