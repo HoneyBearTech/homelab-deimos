@@ -113,6 +113,8 @@ def test_torrent_watch_is_locked_down_and_reads_its_password_from_its_secret() -
     assert service["user"].startswith("${PUID")
     assert "ports" not in service
     assert "cap_add" not in service
+    # It writes into the torrents' folder, which the backups must never copy.
+    assert service["labels"]["org.honeybeartech.deimos.backup.skip"] == "/downloads"
     assert service["secrets"] == ["qbittorrent_password"]
     secret = config["secrets"]["qbittorrent_password"]["file"]
     assert secret == f"{CONFIG_ROOT}/torrent-watch/secrets/qbittorrent_password"

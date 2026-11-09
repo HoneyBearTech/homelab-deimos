@@ -127,7 +127,7 @@ separate file so the stack also starts on a machine without a GPU, such as CI: s
 | `/app/logs` | `CONFIG_ROOT/haspelsync/logs` | AMS app: logs (not backed up) |
 | `/app/data` | `CONFIG_ROOT/mealie/config` | Mealie: recipe images, its own backups and the keys it signs sign-ins with (its database is on the database server) |
 | `/config` | `CONFIG_ROOT/qbittorrent-direct/config` | qBittorrent: settings, login and torrent list |
-| `/downloads` | `TORRENTS_PATH` | qBittorrent: its torrents' files (read-write; never backed up) |
+| `/downloads` | `TORRENTS_PATH` | qBittorrent: its torrents' files (read-write; never backed up). torrent-watch: the same folder, for the files of the torrents it builds or repairs, and `watch/ready-to-submit` (read-write; never backed up) |
 | `/config` | `CONFIG_ROOT/torrent-watch/config` | torrent-watch: what it has seen and added |
 | `/app/torrent_watch.py` (read-only; a Compose config) | `scripts/torrent_watch.py` in the checkout | torrent-watch: its script |
 | `/run/secrets/spoolman_db_password` (read-only; a Docker secret) | `CONFIG_ROOT/spoolman/secrets/db_password`, owned by `PUID:PGID`, mode `600`, no line break; empty with SQLite ([installing.md](installing.md#spoolmans-database)) | Spoolman (`SPOOLMAN_DB_PASSWORD_FILE` points at it) |
@@ -168,8 +168,9 @@ other machines connect to port 8266; the AMS app connects to each printer on the
 5432, TLS) and fetches the recipe pages and images it is asked to import, from any website; social-to-mealie fetches
 the posts it is asked to import from their sites, sends their audio and text to OpenAI's API (`api.openai.com`), and
 posts the recipe to Mealie inside the stack; qBittorrent connects to the trackers its torrents name and to peers
-anywhere on the internet (and they connect to it, on port 50881, where the router forwards it); torrent-watch connects to the model index it is set to, over HTTPS, and to qBittorrent
-inside the stack. The scheduled backup to
+anywhere on the internet (and they connect to it, on port 50881, where the router forwards it); torrent-watch connects to the model index it is set to, over HTTPS, to qBittorrent
+inside the stack, and to Hugging Face (`huggingface.co` and the hosts it redirects downloads to), over HTTPS, for the
+files of a torrent it builds or repairs. The scheduled backup to
 `BACKUP_REMOTE` (rsync,
 usually over SSH) and to `BACKUP_PING_URL`, if they are set.
 
