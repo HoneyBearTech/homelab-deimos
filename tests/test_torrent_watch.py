@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import email
+import email.policy
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +26,23 @@ NEW = "2" * 40
 NEXT = "3" * 40
 
 
+def bencode(value: object) -> bytes:
+    if isinstance(value, int):
+        return b"i%de" % value
+    if isinstance(value, bytes):
+        return b"%d:%s" % (len(value), value)
+    if isinstance(value, list):
+        return b"l" + b"".join(bencode(item) for item in value) + b"e"
+    assert isinstance(value, dict)
+    return b"d" + b"".join(bencode(key) + bencode(item) for key, item in sorted(value.items())) + b"e"
+
+
+def make_torrent(label: str) -> bytes:
+    """A small .torrent file of its own for each label, with a web seed and a field after the info dictionary."""
+    info = {b"name": label.encode(), b"piece length": 16384, b"length": 1, b"pieces": bytes.fromhex(label[:40])}
+    return bencode({b"announce": b"udp://t", b"info": info, b"url-list": b"https://i/"})
+
+
 def row(repo: str, infohash: str, seeds: int = 1) -> str:
     return f"{repo:<40}  1 GB  {seeds} seeds  magnet:?xt=urn:btih:{infohash}&tr=udp%3A%2F%2Ftracker%3A1"
 
@@ -43,6 +63,11 @@ class Site:
         self.force_status = HTTPStatus.OK
         self.catalogue: dict[str, list[dict]] = {}
         self.torrent_answers: dict[str, dict] = {}
+        self.torrent_files: dict[str, bytes] = {}
+        self.real: dict[str, str] = {}
+        self.labels: dict[str, str] = {}
+        self.removed: list[dict[str, str]] = []
+        self.remove_status = HTTPStatus.OK
         self.catalogue_answer: str | None = None
         self.index_status = HTTPStatus.OK
         self.add_answer = '{"failure_count":0,"success_count":1}'
@@ -69,9 +94,21 @@ class Site:
             **fields,
         }
         self.catalogue.setdefault(license_name, []).append(model)
-        self.torrent_answers[repo] = {"magnet": f"magnet:?xt=urn:btih:{infohash}&ws=https%3A%2F%2Fi", "seeders": 0}
+        self.serve_torrent(repo, infohash)
 
-    def answer(self, path: str, form: dict[str, str]) -> tuple[HTTPStatus, str, dict[str, str]]:  # noqa: C901, PLR0911 # one per route
+    def serve_torrent(self, repo: str, label: str, *, file: bool = True) -> None:
+        """List a torrent for repo, known in the tests by label, with its .torrent file unless file is False."""
+        torrent = make_torrent(label)
+        real = tw.info_hash(torrent)
+        self.real[label], self.labels[real] = real, label
+        self.torrent_answers[repo] = {"magnet": f"magnet:?xt=urn:btih:{real}&ws=https%3A%2F%2Fi", "seeders": 0}
+        if file:
+            self.torrent_files[real] = torrent
+            self.torrent_answers[repo]["torrent"] = f"/api/torrents/{real}.torrent"
+
+    def answer(  # noqa: C901, PLR0911, PLR0912 # one per route
+        self, path: str, form: dict[str, str]
+    ) -> tuple[HTTPStatus, str | bytes, dict[str, str]]:
         url = urllib.parse.urlsplit(path)
         self.requests.append(path)
         if url.path.startswith("/s/"):
@@ -81,6 +118,12 @@ class Site:
             return self.index_status, text, {}
         if url.path == "/api/models" and "license=" in url.query:
             return self.catalogue_page(urllib.parse.parse_qs(url.query))
+        if url.path.startswith("/api/torrents/") and url.path.endswith(".torrent"):
+            torrent = self.torrent_files.get(url.path.removeprefix("/api/torrents/").removesuffix(".torrent"))
+            return (self.index_status, torrent, {}) if torrent else (HTTPStatus.NOT_FOUND, "not here", {})
+        if url.path == "/api/v2/torrents/delete":
+            self.removed.append(form)
+            return self.remove_status, "", {}
         if url.path == "/api/torrents":
             repo = urllib.parse.parse_qs(url.query)["repo"][0]
             return self.index_status, json.dumps(self.torrent_answers.get(repo, {"magnet": None})), {}
@@ -96,6 +139,8 @@ class Site:
             data = {"torrents": self.torrents, "server_state": {"free_space_on_disk": self.free}}
             return HTTPStatus.OK, json.dumps(data), {}
         if url.path == "/api/v2/torrents/add":
+            if "torrents" in form:
+                form["infohash"] = tw.info_hash(bytes.fromhex(form["torrents"]))
             self.added.append(form)
             return HTTPStatus.OK, self.add_answer, {}
         if url.path == "/api/v2/torrents/stop":
@@ -115,7 +160,7 @@ def site() -> Iterator[tuple[Site, str]]:
     class Handler(BaseHTTPRequestHandler):
         def respond(self, form: dict[str, str]) -> None:
             status, text, headers = stand_in.answer(self.path, form)
-            body = text.encode()
+            body = text if isinstance(text, bytes) else text.encode()
             self.send_response(status)
             for name, value in headers.items():
                 self.send_header(name, value)
@@ -128,7 +173,19 @@ def site() -> Iterator[tuple[Site, str]]:
 
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", 0))
-            self.respond(dict(urllib.parse.parse_qsl(self.rfile.read(length).decode())))
+            raw = self.rfile.read(length)
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.startswith("multipart/form-data"):
+                self.respond(dict(urllib.parse.parse_qsl(raw.decode())))
+                return
+            head = f"Content-Type: {content_type}\r\n\r\n".encode()
+            message = email.message_from_bytes(head + raw, policy=email.policy.HTTP)
+            form = {}
+            for part in message.iter_parts():
+                payload = part.get_payload(decode=True)
+                name = part.get_param("name", header="content-disposition")
+                form[name] = payload.hex() if part.get_filename() else payload.decode()
+            self.respond(form)
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002 # as the base class names it
             pass
@@ -170,7 +227,9 @@ def state_of(config: tw.Config) -> dict:
 
 
 def magnets(stand_in: Site) -> list[str]:
-    return [form["urls"].split("&")[0].rsplit(":", 1)[1] for form in stand_in.added]
+    """What was added, by label: from the .torrent file's infohash, or the magnet link's."""
+    found = [form.get("infohash") or form["urls"].split("&")[0].rsplit(":", 1)[1] for form in stand_in.added]
+    return [stand_in.labels.get(infohash, infohash) for infohash in found]
 
 
 @pytest.fixture
@@ -457,7 +516,8 @@ def test_at_risk_adds_what_is_there_already_smallest_first_under_its_category(at
     run(config)
     assert magnets(stand_in) == [NEW, NEXT, OLD]
     assert {form["category"] for form in stand_in.added} == {tw.CATEGORY}
-    assert state_of(config)["done"][NEW] == {"repo": "a/small", "why": "added", "size": GB}
+    assert state_of(config)["done"][stand_in.real[NEW]] == {"repo": "a/small", "why": "added", "size": GB}
+    assert all("torrents" in form and "urls" not in form for form in stand_in.added)
 
 
 def test_at_risk_follows_the_list_across_its_pages_for_every_allowed_licence(at_risk: tuple[Site, tw.Config]) -> None:
@@ -580,10 +640,11 @@ def test_at_risk_takes_what_a_term_only_recorded_at_its_first_run(site: tuple[Si
 def test_a_model_already_in_qbittorrent_is_left_alone_by_at_risk(at_risk: tuple[Site, tw.Config]) -> None:
     stand_in, config = at_risk
     stand_in.list_at_risk("a/mine", NEW)
-    stand_in.torrents = {"f" * 40: {"infohash_v1": NEW, "category": "", "total_size": GB, "amount_left": 0}}
+    real = stand_in.real[NEW]
+    stand_in.torrents = {"f" * 40: {"infohash_v1": real, "category": "", "total_size": GB, "amount_left": 0}}
     run(config)
     assert stand_in.added == []
-    assert state_of(config)["done"][NEW]["why"] == "already in qBittorrent"
+    assert state_of(config)["done"][real]["why"] == "already in qBittorrent"
 
 
 @pytest.mark.parametrize(
@@ -662,6 +723,156 @@ def test_a_poll_with_at_risk_and_no_terms_still_runs(tmp_path: Path, monkeypatch
         }
     )
     assert ran == [1]
+
+
+def test_info_hash_is_the_sha1_of_the_info_dictionary_as_written() -> None:
+    info = b"d6:lengthi1e4:name1:a12:piece lengthi16384e6:pieces20:" + b"x" * 20 + b"e"
+    torrent = b"d8:announce1:u4:info" + info + b"8:url-list1:we"
+    assert tw.info_hash(torrent) == hashlib.sha1(info).hexdigest()  # noqa: S324 # BitTorrent's v1 infohash
+
+
+@pytest.mark.parametrize(
+    "torrent",
+    [b"", b"x", b"le", b"d4:infoi1", b"d4:info5:ab", b"d3:fooi1ee", b"di1ei2ee", b"d4:infod1:ae", b"d4:infoxe"],
+)
+def test_a_torrent_file_this_cant_read_raises(torrent: bytes) -> None:
+    with pytest.raises(ValueError):  # noqa: PT011 # what matters is that it raises, whichever way it is broken
+        tw.info_hash(torrent)
+
+
+def rescan(config: tw.Config) -> None:
+    state = state_of(config)
+    state["at_risk"]["scanned"] = 0
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_at_risk_without_a_torrent_file_waits_until_the_index_has_one(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/bare", NEW)
+    stand_in.serve_torrent("a/bare", NEW, file=False)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+        rescan(config)
+        run(config)
+    assert stand_in.added == []
+    assert sum("no .torrent on the index" in message for message in caplog.messages) == 1
+    assert state_of(config)["done"][stand_in.real[NEW]]["why"] == "no .torrent on the index"
+    stand_in.serve_torrent("a/bare", NEW)
+    rescan(config)
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+@pytest.mark.parametrize("path", ["/elsewhere/x.torrent", f"/api/torrents/{'f' * 40}.torrent", 5])
+def test_at_risk_takes_no_torrent_file_from_anywhere_else(at_risk: tuple[Site, tw.Config], path: object) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    stand_in.torrent_answers["a/risky"]["torrent"] = path
+    run(config)
+    assert stand_in.added == []
+    assert not any(request.endswith(".torrent") for request in stand_in.requests)
+
+
+@pytest.mark.parametrize("content", [b"not a torrent", make_torrent(NEXT), b"l" * 5000])
+def test_at_risk_leaves_out_a_torrent_file_that_isnt_the_listed_torrent(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture, content: bytes
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    stand_in.torrent_files[stand_in.real[NEW]] = content
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert stand_in.added == []
+    assert any("isn't the torrent its listing names" in message for message in caplog.messages)
+    assert state_of(config)["at_risk"]["models"] == []
+
+
+def test_at_risk_tries_again_when_the_torrent_file_cant_be_fetched(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    torrent = stand_in.torrent_files.pop(stand_in.real[NEW])
+    run(config)
+    assert stand_in.added == []
+    stand_in.torrent_files[stand_in.real[NEW]] = torrent
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+def no_metadata(**fields: object) -> dict[str, object]:
+    return {"category": tw.CATEGORY, "total_size": -1, "amount_left": 0, "state": "metaDL", **fields}
+
+
+def age_waiting(config: tw.Config, seconds: float) -> None:
+    state = state_of(config)
+    state["no_metadata"] = {key: when - seconds for key, when in state["no_metadata"].items()}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_its_torrent_with_no_metadata_for_a_day_is_removed_and_its_room_freed(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    stand_in.search["qwen"].append(row("a/stuck", NEW))
+    stand_in.models["a/stuck"] = {"license": "mit", "sizeBytes": 90 * GB}
+    run(config)
+    stand_in.torrents = {NEW: no_metadata(), "e" * 40: no_metadata(category="")}
+    run(config)
+    age_waiting(config, tw.GIVE_UP_SECONDS - 60)
+    run(config)
+    assert stand_in.removed == []
+    age_waiting(config, 120)
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert stand_in.removed == [{"hashes": NEW, "deleteFiles": "false"}]
+    assert state_of(config)["done"][NEW]["why"] == "gave up: no metadata"
+    assert state_of(config)["no_metadata"] == {}
+    assert any("found no metadata in a day" in message for message in caplog.messages)
+
+
+def test_a_torrent_that_finds_its_metadata_isnt_removed(watching: tuple[Site, tw.Config]) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {NEW: no_metadata()}
+    run(config)
+    stand_in.torrents = {NEW: no_metadata(total_size=GB, state="downloading")}
+    run(config)
+    assert state_of(config)["no_metadata"] == {}
+    stand_in.torrents = {NEW: no_metadata()}
+    run(config)
+    age_waiting(config, 60)
+    run(config)
+    assert stand_in.removed == []
+
+
+def test_failing_to_remove_a_torrent_with_no_metadata_is_tried_again(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    stand_in.torrents = {NEW: no_metadata()}
+    run(config)
+    age_waiting(config, tw.GIVE_UP_SECONDS)
+    stand_in.remove_status = HTTPStatus.BAD_GATEWAY
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any("can't remove 1 torrents" in message for message in caplog.messages)
+    assert NEW in state_of(config)["no_metadata"]
+    stand_in.remove_status = HTTPStatus.OK
+    run(config)
+    assert [form["hashes"] for form in stand_in.removed] == [NEW, NEW]
+    assert state_of(config)["no_metadata"] == {}
+
+
+def test_a_model_given_up_on_is_taken_again_once_the_index_has_its_torrent_file(
+    at_risk: tuple[Site, tw.Config],
+) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    real = stand_in.real[NEW]
+    state = {"done": {real: {"repo": "a/risky", "why": "gave up: no metadata", "size": GB}}}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert magnets(stand_in) == [NEW]
 
 
 @pytest.mark.parametrize("free", [0, None, "1000"])
@@ -916,7 +1127,14 @@ def test_settings_that_cant_be_right_are_refused(settings: dict[str, str], expec
 def test_a_damaged_state_file_starts_again(tmp_path: Path, content: str) -> None:
     path = tmp_path / "state.json"
     path.write_text(content, encoding="utf-8")
-    assert tw.load_state(path) == {"terms": [], "done": {}, "pending": {}, "forced": [], "at_risk": {}}
+    assert tw.load_state(path) == {
+        "terms": [],
+        "done": {},
+        "pending": {},
+        "forced": [],
+        "at_risk": {},
+        "no_metadata": {},
+    }
 
 
 def test_saving_the_state_leaves_no_temporary_file(tmp_path: Path) -> None:
