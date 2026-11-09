@@ -14,7 +14,12 @@ someone starts them again.
 With ``TORRENT_WATCH_AT_RISK`` it also adds what the index counts as at risk: a torrent with no observed seeders whose
 source is still available, smallest first, under the same rules. Nothing is recorded first for these, since what is at
 risk now is the point. The index's list has ended at different lengths from one run to the next, so what it sees may not
-be everything at risk.
+be everything at risk. Each is added from the index's own .torrent file, which carries its metadata, after checking it
+is the torrent the listing names. A torrent at risk with no .torrent file on the index is left out: with no seeders, no
+peer could give it its metadata either.
+
+One of its own torrents that has found no metadata in a day is removed. Nothing of it was downloaded, so nothing is
+lost, and the room it took under the limits is free again.
 
 A model whose name marks it as uncensored is never added, however it was found. That goes by the name alone, with the
 words the index's own filter looks for, so a model with its safeguards removed under another name gets through.
@@ -29,6 +34,7 @@ Standard library only: compose.yaml runs it in a pinned Python image.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import http.client
 import http.cookiejar
 import json
@@ -41,6 +47,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -59,6 +66,14 @@ SAVE_PATH = "/downloads/watch"
 # metadata yet.
 SEEDING_STATES = frozenset({"queuedUP", "stalledUP", "uploading"})
 POLL_SECONDS = 1800
+# How long one of its torrents may go without metadata before it is removed: no peer has it, and nothing was downloaded.
+GIVE_UP_SECONDS = 24 * 3600
+# The index serves each torrent's .torrent file here.
+TORRENT_PATH_RE = re.compile(r"^/api/torrents/(?P<hash>[0-9a-f]{40})\.torrent$")
+# What a model's last outcome may be for the list of torrents at risk to look at it again.
+RETRY = frozenset({"listed before", "gave up: no metadata", "no .torrent on the index"})
+# The options every torrent it adds goes in with.
+ADD_OPTIONS = {"category": CATEGORY, "savepath": SAVE_PATH, "autoTMM": "false"}
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
 # A second limit on top of the sizes, in case the index ever lists a run of torrents as new by mistake.
 MAX_ADDS_PER_POLL = 3
@@ -96,6 +111,7 @@ class Row(NamedTuple):
     repo: str
     infohash: str
     magnet: str
+    torrent_path: str | None = None
 
 
 class Details(NamedTuple):
@@ -130,6 +146,7 @@ class Snapshot(NamedTuple):
     left: int
     incomplete: tuple[str, ...]
     seeding: tuple[str, ...]
+    no_metadata: tuple[str, ...] = ()
 
 
 def parse_term(text: str) -> Term:
@@ -178,13 +195,16 @@ def load_config(env: Mapping[str, str]) -> Config:
     )
 
 
-def read_url(opener: urllib.request.OpenerDirector, url: str, body: bytes | None, what: str) -> str:
-    """Read a URL as text, with POST if there's a body; anything but a success raises, naming ``what`` failed."""
+def read_bytes(
+    opener: urllib.request.OpenerDirector, url: str, body: bytes | None, what: str, content_type: str | None = None
+) -> bytes:
+    """Read a URL, with POST if there's a body; anything but a success raises, naming ``what`` failed."""
+    headers = {"User-Agent": "torrent-watch", **({"Content-Type": content_type} if content_type else {})}
     # load_config checks the index's address is https, and qBittorrent's is this stack's own.
-    request = urllib.request.Request(url, body, {"User-Agent": "torrent-watch"})  # noqa: S310
+    request = urllib.request.Request(url, body, headers)  # noqa: S310
     try:
         with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-            return response.read(MAX_RESPONSE_BYTES).decode("utf-8", "replace")
+            return response.read(MAX_RESPONSE_BYTES)
     except urllib.error.HTTPError as err:
         err.close()  # it holds the response open until it is closed
         message = f"can't read {what}: {err}"
@@ -194,9 +214,76 @@ def read_url(opener: urllib.request.OpenerDirector, url: str, body: bytes | None
         raise WatchError(message) from err
 
 
+def read_url(opener: urllib.request.OpenerDirector, url: str, body: bytes | None, what: str) -> str:
+    """Read a URL as text, with POST if there's a body."""
+    return read_bytes(opener, url, body, what).decode("utf-8", "replace")
+
+
 def fetch(url: str) -> str:
     """Get a page of the index as text."""
     return read_url(urllib.request.build_opener(), url, None, "the index")
+
+
+def fetch_bytes(url: str) -> bytes:
+    """Get a file from the index."""
+    return read_bytes(urllib.request.build_opener(), url, None, "the index")
+
+
+def bdecode(data: bytes, start: int = 0) -> tuple[Any, int]:
+    """Read the bencoded value at ``start``; return it and where it ends. Anything malformed raises ValueError."""
+    kind = data[start : start + 1]
+    if kind == b"i":
+        end = data.index(b"e", start)
+        return int(data[start + 1 : end]), end + 1
+    if kind in {b"l", b"d"}:
+        items, position = [], start + 1
+        while data[position : position + 1] != b"e":
+            item, position = bdecode(data, position)
+            items.append(item)
+        return (items if kind == b"l" else dict(zip(items[::2], items[1::2], strict=True))), position + 1
+    colon = data.index(b":", start)
+    end = colon + 1 + int(data[start:colon])
+    if end > len(data):
+        message = "a string runs past the end"
+        raise ValueError(message)
+    return data[colon + 1 : end], end
+
+
+def info_hash(torrent: bytes) -> str:
+    """Return a .torrent file's v1 infohash: the SHA-1 of its info dictionary as written. Anything else raises."""
+    if torrent[:1] != b"d":
+        message = "not a dictionary"
+        raise ValueError(message)
+    position = 1
+    while torrent[position : position + 1] != b"e":
+        key, position = bdecode(torrent, position)
+        start = position
+        _, position = bdecode(torrent, position)
+        if key == b"info":
+            return hashlib.sha1(torrent[start:position]).hexdigest()  # noqa: S324 # BitTorrent's v1 infohash is SHA-1
+    message = "no info dictionary"
+    raise ValueError(message)
+
+
+def multipart(fields: dict[str, str], name: str, filename: str, content: bytes) -> tuple[bytes, str]:
+    """Encode a form with one file as multipart/form-data; return the body and its content type."""
+    boundary = uuid.uuid4().hex
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+        for key, value in fields.items()
+    ]
+    head = f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"\r\n'
+    parts.append(f"{head}Content-Type: application/x-bittorrent\r\n\r\n".encode() + content + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
+def check_added(answer: str) -> None:
+    """Raise unless qBittorrent's answer to an add says it took the torrent."""
+    answer = answer.strip()
+    if answer != "Ok." and '"failure_count":0' not in answer.replace(" ", ""):
+        message = f"qBittorrent didn't take the torrent: {answer[:200]}"
+        raise WatchError(message)
 
 
 def is_uncensored(repo: str) -> bool:
@@ -239,10 +326,13 @@ def parse_search(text: str) -> list[Row]:
 class Index:
     """The model index: its plain-text search and its list of models."""
 
-    def __init__(self, base_url: str, get: Callable[[str], str] = fetch) -> None:
-        """Remember where the index is, and how to read a page."""
+    def __init__(
+        self, base_url: str, get: Callable[[str], str] = fetch, get_bytes: Callable[[str], bytes] = fetch_bytes
+    ) -> None:
+        """Remember where the index is, and how to read a page or a file."""
         self.base_url = base_url
         self.get = get
+        self.get_bytes = get_bytes
 
     def search(self, term: Term) -> list[Row]:
         """Return the torrents a term matches."""
@@ -297,7 +387,13 @@ class Index:
         match = MAGNET_RE.match(magnet) if isinstance(magnet, str) else None
         if match is None or terms or seeders != 0:
             return None
-        return Row(repo, match["hash"].lower(), magnet)
+        infohash, path = match["hash"].lower(), answer.get("torrent")
+        found = TORRENT_PATH_RE.match(path) if isinstance(path, str) else None
+        return Row(repo, infohash, magnet, path if found and found["hash"] == infohash else None)
+
+    def torrent_file(self, path: str) -> bytes:
+        """Return one of the index's .torrent files, by the path its listing gives."""
+        return self.get_bytes(f"{self.base_url}{path}")
 
 
 class Qbittorrent:
@@ -344,13 +440,18 @@ class Qbittorrent:
 
     def add(self, magnet: str) -> None:
         """Add a magnet link under this script's category and folder."""
-        answer = self.call(
-            "torrents/add",
-            {"urls": magnet, "category": CATEGORY, "savepath": SAVE_PATH, "autoTMM": "false"},
-        ).strip()
-        if answer != "Ok." and '"failure_count":0' not in answer.replace(" ", ""):
-            message = f"qBittorrent didn't take the magnet link: {answer[:200]}"
-            raise WatchError(message)
+        check_added(self.call("torrents/add", {"urls": magnet, **ADD_OPTIONS}))
+
+    def add_file(self, torrent: bytes, infohash: str) -> None:
+        """Add a .torrent file under this script's category and folder."""
+        body, content_type = multipart(ADD_OPTIONS, "torrents", f"{infohash}.torrent", torrent)
+        url = f"{self.url}/api/v2/torrents/add"
+        answer = read_bytes(self.opener, url, body, "qBittorrent's torrents/add", content_type)
+        check_added(answer.decode("utf-8", "replace"))
+
+    def remove(self, hashes: tuple[str, ...]) -> None:
+        """Remove these torrents from qBittorrent, leaving any files they have."""
+        self.call("torrents/delete", {"hashes": "|".join(hashes), "deleteFiles": "false"})
 
     def stop(self, hashes: tuple[str, ...]) -> None:
         """Stop these torrents."""
@@ -369,22 +470,24 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
         raise WatchError(message)
     known: set[str] = set()
     total = left = 0
-    incomplete = []
-    seeding = []
+    incomplete, seeding, no_metadata = [], [], []
     for key, torrent in maindata.get("torrents", {}).items():
         infohash = torrent.get("infohash_v1") or key
         known |= {key, infohash}
         size, remaining = torrent.get("total_size", 0), torrent.get("amount_left", 0)
-        if size <= 0:
+        has_metadata = size > 0
+        if not has_metadata:
             size = remaining = done.get(infohash, {}).get("size", 0)
         left += remaining
         if torrent.get("category") == CATEGORY:
             total += size
             if remaining > 0 and not torrent.get("state", "").startswith(("stopped", "paused")):
                 incomplete.append(key)
+            if not has_metadata:
+                no_metadata.append(key)
         if torrent.get("state") in SEEDING_STATES:
             seeding.append(key)
-    return Snapshot(free, frozenset(known), total, left, tuple(incomplete), tuple(seeding))
+    return Snapshot(free, frozenset(known), total, left, tuple(incomplete), tuple(seeding), tuple(no_metadata))
 
 
 def refusal(details: Details, config: Config, snapshot: Snapshot) -> str | None:
@@ -419,6 +522,7 @@ def load_state(path: Path) -> dict[str, Any]:
         "pending": state.get("pending", {}),
         "forced": state.get("forced", []),
         "at_risk": state.get("at_risk", {}),
+        "no_metadata": state.get("no_metadata", {}),
     }
 
 
@@ -476,10 +580,13 @@ class Watch:
             return snapshot
         return self.add(row, details, snapshot)
 
-    def add(self, row: Row, details: Details, snapshot: Snapshot) -> Snapshot:
-        """Add a torrent that may be added, record it, and return the snapshot with it counted."""
+    def add(self, row: Row, details: Details, snapshot: Snapshot, torrent: bytes | None = None) -> Snapshot:
+        """Add a torrent that may be added, from its .torrent file if there is one, and return the snapshot with it."""
         size = details.size or 0
-        self.client.add(row.magnet)
+        if torrent is None:
+            self.client.add(row.magnet)
+        else:
+            self.client.add_file(torrent, row.infohash)
         self.added += 1
         self.state["pending"].pop(row.infohash, None)
         self.state["done"][row.infohash] = {"repo": row.repo, "why": "added", "size": size}
@@ -514,19 +621,35 @@ class Watch:
     def take_at_risk(self, model: dict[str, Any], snapshot: Snapshot) -> Snapshot:
         """Add one model at risk if it still is, and return the snapshot with it counted."""
         row = self.index.at_risk_torrent(model["repo"])
+        models, done = self.state["at_risk"]["models"], self.state["done"]
         if row is None:
             log.info("leaving out %s: it has seeders now, or terms to accept, or no torrent", model["repo"])
-            self.state["at_risk"]["models"].remove(model)
+            models.remove(model)
             return snapshot
         if row.infohash in snapshot.known:
-            self.state["done"][row.infohash] = {"repo": row.repo, "why": "already in qBittorrent"}
+            done[row.infohash] = {"repo": row.repo, "why": "already in qBittorrent"}
             return snapshot
-        return self.add(row, Details(model["license"], model["size"]), snapshot)
+        if row.torrent_path is None:
+            if done.get(row.infohash, {}).get("why") != "no .torrent on the index":
+                log.info("not adding %s for now: no .torrent on the index, so nothing can give it metadata", row.repo)
+            done[row.infohash] = {"repo": row.repo, "why": "no .torrent on the index"}
+            models.remove(model)
+            return snapshot
+        torrent = self.index.torrent_file(row.torrent_path)
+        try:
+            matches = info_hash(torrent) == row.infohash
+        except ValueError, RecursionError:
+            matches = False
+        if not matches:
+            log.warning("leaving out %s: its .torrent file isn't the torrent its listing names", row.repo)
+            models.remove(model)
+            return snapshot
+        return self.add(row, Details(model["license"], model["size"]), snapshot, torrent)
 
     def run_at_risk(self, snapshot: Snapshot) -> None:
         """Add what is at risk, smallest first, while the limits allow it."""
         models = self.at_risk_models()
-        taken = {entry["repo"] for entry in self.state["done"].values() if entry.get("why") != "listed before"}
+        taken = {entry["repo"] for entry in self.state["done"].values() if entry.get("why") not in RETRY}
         left_out = waiting = 0
         for model in list(models):
             if model["repo"] in taken:
@@ -565,12 +688,36 @@ class Watch:
         forced.extend(finished)
         log.info("switched %d finished torrents to forced seeding", len(finished))
 
+    def give_up_without_metadata(self, snapshot: Snapshot) -> None:
+        """Remove its own torrents that have found no metadata in a day; nothing of them was downloaded."""
+        waiting, now = self.state["no_metadata"], time.time()
+        for key in set(waiting) - set(snapshot.no_metadata):
+            del waiting[key]
+        expired = tuple(key for key in snapshot.no_metadata if now - waiting.setdefault(key, now) >= GIVE_UP_SECONDS)
+        if not expired:
+            return
+        try:
+            self.client.remove(expired)
+        except WatchError as err:
+            log.warning("can't remove %d torrents that found no metadata yet: %s", len(expired), err)
+            return
+        for key in expired:
+            del waiting[key]
+            if key in self.state["done"]:
+                self.state["done"][key]["why"] = "gave up: no metadata"
+        log.warning(
+            "removed %d of its torrents that found no metadata in a day: they held no data, and their room under the "
+            "limits is free again",
+            len(expired),
+        )
+
     def run(self) -> None:
         """Run one poll."""
         self.client.login()
         snapshot = read_snapshot(self.client.maindata(), self.state["done"])
         self.stop_if_short_of_space(snapshot)
         self.force_finished(snapshot)
+        self.give_up_without_metadata(snapshot)
         for position, term in enumerate(self.config.terms):
             if position:
                 time.sleep(self.config.pause_seconds)

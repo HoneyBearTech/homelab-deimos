@@ -336,9 +336,15 @@ word: a torrent with no observed seeders whose source is still available. What i
 is only recorded first, and it takes the smallest first, to save the most torrents per GB. The rules above still hold, so
 expect it to stop at your limits long before it runs out of torrents: the list can come to many terabytes. It asks for
 the whole list every 6 hours, about 100 requests over several minutes, and adds from that answer at each poll. The index's
-list has ended at different lengths from one run to the next, so what it sees may not be everything at risk. With no
-seeders the data comes from the index's web seed, so speeds vary, and a download can stall for as long as that does. One
-that never finishes keeps counting toward the limits until you remove it.
+list has ended at different lengths from one run to the next, so what it sees may not be everything at risk. Each is added
+from the index's own `.torrent` file, which carries its metadata, after checking it is the torrent the listing names. One
+with no `.torrent` file on the index is left out until it has one: with no seeders, no peer could give it its metadata
+either. With no seeders the data comes from the index's web seed, so speeds vary. The index's own docs say its web seed
+stalls plain BitTorrent v1 torrents with several files at 99 %; one that never finishes keeps counting toward the limits
+until you remove it.
+
+**A torrent of its own that has found no metadata in a day** (a magnet link nobody can complete) is removed from
+qBittorrent. Nothing of it was downloaded, so nothing is lost, and its room under the limits is free again.
 
 **Watch terms** are separated by commas. Words (`qwen gguf`) match any model with those words in its name, whoever
 made it; one author with a slash after it (`someone/`) keeps only that author's models. Keep them narrow: the index's
@@ -348,8 +354,8 @@ about a term that matches 75 or more.
 **The index** must answer `GET /s/<words>` (words joined with `+`) with one line per torrent, starting with
 `<author>/<model>` and ending with its magnet link, and `GET /api/models?q=<author>/<model>` with JSON whose `models`
 give each one's `id`, `license` and `sizeBytes`. For torrents at risk, `GET /api/models?license=<licence>` must list them
-page by page (`nextCursor`, `seeded`, `seed`, `hfBacked`), and `GET /api/torrents?repo=<author>/<model>` give `magnet` and
-`seeders`. If it stops answering like that, nothing is added, and the log says
+page by page (`nextCursor`, `seeded`, `seed`, `hfBacked`), and `GET /api/torrents?repo=<author>/<model>` give `magnet`,
+`seeders` and `torrent`, the path of its `.torrent` file (`/api/torrents/<infohash>.torrent`). If it stops answering like that, nothing is added, and the log says
 why. Its word for a licence is all this has to go on: read the licence before relying on a model.
 
 ## Scheduled backups
