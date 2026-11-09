@@ -18,6 +18,15 @@ be everything at risk. Each is added from the index's own .torrent file, which c
 is the torrent the listing names. A torrent at risk with no .torrent file on the index is left out: with no seeders, no
 peer could give it its metadata either.
 
+For a torrent at risk with no .torrent file, it builds a new torrent itself, one model at a time: it downloads the files
+the listing names from the model's source at the revision the listing pins, checks each against the listing's SHA-256,
+has qBittorrent make a hybrid (v1 and v2) torrent of them with the listing's trackers and web seed, and seeds it. The
+.torrent file, with a sheet of what the index's submit form asks, goes in ready-to-submit for someone to submit.
+
+One of its own torrents that stays just short of done for 6 hours (the index's web seed stalls plain v1 torrents with
+several files at 99 %) has its unfinished files fetched from the source the same way, checked, and put in place, and
+qBittorrent checks the torrent again. Each torrent gets one such repair.
+
 One of its own torrents that has found no metadata in a day is removed. Nothing of it was downloaded, so nothing is
 lost, and the room it took under the limits is free again.
 
@@ -68,10 +77,28 @@ SEEDING_STATES = frozenset({"queuedUP", "stalledUP", "uploading"})
 POLL_SECONDS = 1800
 # How long one of its torrents may go without metadata before it is removed: no peer has it, and nothing was downloaded.
 GIVE_UP_SECONDS = 24 * 3600
+# Where it downloads a model from to build or repair a torrent: its source, at the revision its listing pins.
+SOURCE_URL = "https://huggingface.co"
+# The folder, inside its own, it leaves torrents it built in for someone to submit to the index.
+READY_FOLDER = "ready-to-submit"
+# How long one poll may spend downloading, so that polls keep coming; a download carries on at the next.
+WORK_SECONDS = 20 * 60
+# How long one of its torrents may sit just short of done before its unfinished files are fetched from the source.
+STALL_SECONDS = 6 * 3600
+STALL_PROGRESS = 0.99
+CHUNK_BYTES = 1024 * 1024
+# What a model's outcome is while it waits for a torrent built here.
+NEEDS_TORRENT = "no .torrent on the index"
+REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
+REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+TRACKER_RE = re.compile(r"^(?:udp|https?)://[\w.-]+(?::\d+)?/\S*$")
 # The index serves each torrent's .torrent file here.
 TORRENT_PATH_RE = re.compile(r"^/api/torrents/(?P<hash>[0-9a-f]{40})\.torrent$")
 # What a model's last outcome may be for the list of torrents at risk to look at it again.
-RETRY = frozenset({"listed before", "gave up: no metadata", "no .torrent on the index"})
+RETRY = frozenset(
+    {"listed before", "gave up: no metadata", "no .torrent on the index", "check again", "rebuild failed"}
+)
 # The options every torrent it adds goes in with.
 ADD_OPTIONS = {"category": CATEGORY, "savepath": SAVE_PATH, "autoTMM": "false"}
 HEARTBEAT = Path("/tmp/torrent-watch-heartbeat")  # noqa: S108 # the container's own tmpfs
@@ -95,6 +122,10 @@ UNCENSORED_WORDS = ("abliterated", "decensored", "heretic", "obliterated", "obli
 
 class WatchError(Exception):
     """Something this poll can't go on without; it is logged, and the next poll tries again."""
+
+
+class JobError(WatchError):
+    """Something that means a rebuild or repair can't work, so it is given up rather than tried again."""
 
 
 class Term(NamedTuple):
@@ -135,6 +166,9 @@ class Config(NamedTuple):
     min_free: int
     at_risk: bool = False
     pause_seconds: float = 1.0
+    source_url: str = SOURCE_URL
+    files_dir: Path = Path(SAVE_PATH)
+    work_seconds: float = WORK_SECONDS
 
 
 class Snapshot(NamedTuple):
@@ -147,6 +181,7 @@ class Snapshot(NamedTuple):
     incomplete: tuple[str, ...]
     seeding: tuple[str, ...]
     no_metadata: tuple[str, ...] = ()
+    near_done: tuple[tuple[str, str, int], ...] = ()
 
 
 def parse_term(text: str) -> Term:
@@ -278,6 +313,74 @@ def multipart(fields: dict[str, str], name: str, filename: str, content: bytes) 
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
+def safe_relative(path: object) -> str:
+    """Return a file's path inside a model if it stays inside it; anything else raises ValueError."""
+    if not isinstance(path, str) or not path:
+        message = f"not a path: {path!r}"
+        raise ValueError(message)
+    if any(part in {"", ".", ".."} or "\\" in part or "\x00" in part for part in path.split("/")):
+        message = f"a path that leaves its folder: {path!r}"
+        raise ValueError(message)
+    return path
+
+
+def sha256_of(path: Path) -> str:
+    """Return a file's SHA-256."""
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        while chunk := file.read(CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download(url: str, target: Path, sha256: str, deadline: float, limit: int) -> bool:
+    """Download url to target through a .part file that a later poll resumes; True once it is complete and checked.
+
+    False when the deadline comes first. A file over limit bytes, or one that doesn't match sha256, raises JobError.
+    """
+    part = target.with_name(target.name + ".part")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    have = part.stat().st_size if part.exists() else 0
+    headers = {"User-Agent": "torrent-watch", **({"Range": f"bytes={have}-"} if have else {})}
+    request = urllib.request.Request(url, headers=headers)  # noqa: S310 # the source's address, from the settings
+    try:
+        with urllib.request.build_opener().open(request, timeout=TIMEOUT_SECONDS) as response:
+            if response.status != HTTPStatus.PARTIAL_CONTENT:
+                have = 0
+            with part.open("ab" if have else "wb") as out:
+                while chunk := response.read(CHUNK_BYTES):
+                    have += len(chunk)
+                    if have > limit:
+                        message = f"{target.name} from the source is larger than the whole model"
+                        raise JobError(message)
+                    out.write(chunk)
+                    HEARTBEAT.touch()
+                    if time.time() >= deadline:
+                        return False
+    except urllib.error.HTTPError as err:
+        err.close()
+        if err.code != HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE:
+            message = f"can't download {target.name} from the source: {err}"
+            raise WatchError(message) from err
+    except (OSError, http.client.HTTPException) as err:
+        message = f"can't download {target.name} from the source: {err}"
+        raise WatchError(message) from err
+    if sha256_of(part) != sha256:
+        part.unlink()
+        message = f"{target.name} from the source doesn't match its listing's checksum"
+        raise JobError(message)
+    part.replace(target)
+    return True
+
+
+def magnet_parts(magnet: str, index_url: str) -> tuple[list[str], str | None]:
+    """Return a listing's magnet link's trackers, and its web seed if that is on the index itself."""
+    query = urllib.parse.parse_qs(magnet.partition("?")[2])
+    trackers = [tracker for tracker in query.get("tr", []) if TRACKER_RE.match(tracker)]
+    seeds = [seed for seed in query.get("ws", []) if seed.startswith(f"{index_url}/api/ws/")]
+    return trackers, (seeds[0] if seeds else None)
+
+
 def check_added(answer: str) -> None:
     """Raise unless qBittorrent's answer to an add says it took the torrent."""
     answer = answer.strip()
@@ -391,6 +494,20 @@ class Index:
         found = TORRENT_PATH_RE.match(path) if isinstance(path, str) else None
         return Row(repo, infohash, magnet, path if found and found["hash"] == infohash else None)
 
+    def listing(self, repo: str) -> dict[str, Any]:
+        """Return a model's listing, its revision and every file's path and SHA-256 checked; anything else raises."""
+        try:
+            answer = json.loads(self.get(f"{self.base_url}/api/torrents?{urllib.parse.urlencode({'repo': repo})}"))
+            revision = answer["revision"]
+            files = [{"path": safe_relative(file["path"]), "sha256": file["sha256"]} for file in answer["files"]]
+            if not REVISION_RE.match(revision) or not files or not all(SHA256_RE.match(f["sha256"]) for f in files):
+                message = "no revision, no files, or a checksum that isn't one"
+                raise ValueError(message)  # noqa: TRY301 # handled with the rest just below
+        except (ValueError, KeyError, TypeError, AttributeError) as err:
+            message = f"the listing of {repo} isn't one to build a torrent from: {err}"
+            raise JobError(message) from err
+        return {**answer, "revision": revision, "files": files}
+
     def torrent_file(self, path: str) -> bytes:
         """Return one of the index's .torrent files, by the path its listing gives."""
         return self.get_bytes(f"{self.base_url}{path}")
@@ -449,6 +566,50 @@ class Qbittorrent:
         answer = read_bytes(self.opener, url, body, "qBittorrent's torrents/add", content_type)
         check_added(answer.decode("utf-8", "replace"))
 
+    def create_torrent(self, source: str, trackers: list[str], web_seed: str | None, comment: str) -> str:
+        """Have qBittorrent make a hybrid torrent of a folder and seed it; return the task's ID."""
+        form = {"sourcePath": source, "format": "hybrid", "startSeeding": "true", "comment": comment}
+        form |= {"trackers": "|".join(trackers)} if trackers else {}
+        form |= {"urlSeeds": web_seed} if web_seed else {}
+        try:
+            return json.loads(self.call("torrentcreator/addTask", form))["taskID"]
+        except (ValueError, KeyError, TypeError) as err:
+            message = f"qBittorrent didn't start making the torrent: {err!r}"
+            raise WatchError(message) from err
+
+    def creation(self, task: str) -> dict[str, Any]:
+        """Return how making a torrent is going: its status, and an error message if it failed."""
+        tasks = json.loads(self.call(f"torrentcreator/status?{urllib.parse.urlencode({'taskID': task})}"))
+        return tasks[0] if tasks else {"status": "Failed", "errorMessage": "qBittorrent has no such task"}
+
+    def created_torrent(self, task: str) -> bytes:
+        """Return the .torrent file qBittorrent made, and forget the task."""
+        query = urllib.parse.urlencode({"taskID": task})
+        torrent = read_bytes(self.opener, f"{self.url}/api/v2/torrentcreator/torrentFile?{query}", None, "the torrent")
+        self.call("torrentcreator/deleteTask", {"taskID": task})
+        return torrent
+
+    def set_category(self, key: str) -> None:
+        """Put a torrent under this script's category."""
+        self.call("torrents/setCategory", {"hashes": key, "category": CATEGORY})
+
+    def files(self, key: str) -> list[dict[str, Any]]:
+        """Return a torrent's files, with how far each has come."""
+        return json.loads(self.call(f"torrents/files?{urllib.parse.urlencode({'hash': key})}"))
+
+    def recheck(self, key: str) -> None:
+        """Check a torrent's data again."""
+        self.call("torrents/recheck", {"hashes": key})
+
+    def start(self, keys: tuple[str, ...]) -> None:
+        """Start these torrents."""
+        self.call("torrents/start", {"hashes": "|".join(keys)})
+
+    def states(self, keys: tuple[str, ...]) -> dict[str, str]:
+        """Return these torrents' states, by key; one qBittorrent doesn't hold is missing."""
+        answer = json.loads(self.call(f"torrents/info?{urllib.parse.urlencode({'hashes': '|'.join(keys)})}"))
+        return {torrent["hash"]: torrent.get("state", "") for torrent in answer}
+
     def remove(self, hashes: tuple[str, ...]) -> None:
         """Remove these torrents from qBittorrent, leaving any files they have."""
         self.call("torrents/delete", {"hashes": "|".join(hashes), "deleteFiles": "false"})
@@ -470,7 +631,7 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
         raise WatchError(message)
     known: set[str] = set()
     total = left = 0
-    incomplete, seeding, no_metadata = [], [], []
+    incomplete, seeding, no_metadata, near_done = [], [], [], []
     for key, torrent in maindata.get("torrents", {}).items():
         infohash = torrent.get("infohash_v1") or key
         known |= {key, infohash}
@@ -485,9 +646,12 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
                 incomplete.append(key)
             if not has_metadata:
                 no_metadata.append(key)
+            elif remaining > 0 and torrent.get("progress", 0) >= STALL_PROGRESS:
+                near_done.append((key, infohash, remaining))
         if torrent.get("state") in SEEDING_STATES:
             seeding.append(key)
-    return Snapshot(free, frozenset(known), total, left, tuple(incomplete), tuple(seeding), tuple(no_metadata))
+    lists = (tuple(incomplete), tuple(seeding), tuple(no_metadata), tuple(near_done))
+    return Snapshot(free, frozenset(known), total, left, *lists)
 
 
 def refusal(details: Details, config: Config, snapshot: Snapshot) -> str | None:
@@ -523,6 +687,11 @@ def load_state(path: Path) -> dict[str, Any]:
         "forced": state.get("forced", []),
         "at_risk": state.get("at_risk", {}),
         "no_metadata": state.get("no_metadata", {}),
+        "near_done": state.get("near_done", {}),
+        "repaired": state.get("repaired", []),
+        "rebuild": state.get("rebuild"),
+        "repair": state.get("repair"),
+        "restart": state.get("restart", []),
     }
 
 
@@ -630,9 +799,12 @@ class Watch:
             done[row.infohash] = {"repo": row.repo, "why": "already in qBittorrent"}
             return snapshot
         if row.torrent_path is None:
-            if done.get(row.infohash, {}).get("why") != "no .torrent on the index":
-                log.info("not adding %s for now: no .torrent on the index, so nothing can give it metadata", row.repo)
-            done[row.infohash] = {"repo": row.repo, "why": "no .torrent on the index"}
+            why = done.get(row.infohash, {}).get("why")
+            if why != "rebuild failed":
+                if why != NEEDS_TORRENT:
+                    log.info("not adding %s: no .torrent on the index, so it waits for a torrent built here", row.repo)
+                entry = {"repo": row.repo, "why": NEEDS_TORRENT, "license": model["license"], "size": model["size"]}
+                done[row.infohash] = entry
             models.remove(model)
             return snapshot
         torrent = self.index.torrent_file(row.torrent_path)
@@ -711,10 +883,227 @@ class Watch:
             len(expired),
         )
 
+    def source(self, repo: str, revision: str, path: str) -> str:
+        """Return a file's address at the model's source, at a revision."""
+        quoted = urllib.parse.quote(path, safe="/")
+        return f"{self.config.source_url}/{urllib.parse.quote(repo, safe='/')}/resolve/{revision}/{quoted}"
+
+    def count_jobs(self, snapshot: Snapshot) -> Snapshot:
+        """Count a torrent being built here toward the limits, until qBittorrent holds it."""
+        job = self.state["rebuild"]
+        if job is None or job.get("task"):
+            return snapshot
+        return snapshot._replace(total=snapshot.total + job["size"], left=snapshot.left + job["size"])
+
+    def rebuild_candidate(self, snapshot: Snapshot) -> tuple[str, dict[str, Any]] | None:
+        """Return the smallest model waiting for a torrent built here that the limits allow, if any."""
+        waiting = sorted(
+            ((infohash, entry) for infohash, entry in self.state["done"].items() if entry.get("why") == NEEDS_TORRENT),
+            key=lambda item: item[1].get("size") or 0,
+        )
+        for infohash, entry in waiting:
+            if REPO_RE.match(entry["repo"]) and not is_uncensored(entry["repo"]):
+                details = Details(entry.get("license"), entry.get("size"))
+                if not refusal(details, self.config, snapshot):
+                    return infohash, entry
+        return None
+
+    def start_rebuild(self, infohash: str, entry: dict[str, Any]) -> None:
+        """Begin building a torrent for a model, if its listing still has none and no seeders."""
+        listing = self.index.listing(entry["repo"])
+        if listing.get("torrent") or listing.get("seeders") != 0:
+            entry["why"] = "check again"
+            return
+        trackers, web_seed = magnet_parts(str(listing.get("magnet") or ""), self.index.base_url)
+        name = entry["repo"].replace("/", "__")
+        self.state["rebuild"] = {
+            **{key: entry[key] for key in ("repo", "license", "size")},
+            "name": name,
+            "old": infohash,
+            "revision": listing["revision"],
+            "files": listing["files"],
+            "verified": [],
+            "trackers": trackers,
+            "web_seed": web_seed,
+            "magnet": listing.get("magnet"),
+            "task": None,
+        }
+        count = len(listing["files"])
+        log.info("building a torrent for %s: downloading its %d files from its source", entry["repo"], count)
+
+    def continue_rebuild(self, deadline: float) -> None:
+        """Download, then have the torrent made, then leave it ready to submit; a step carries on at the next poll."""
+        job = self.state["rebuild"]
+        if job["task"] is None:
+            folder = self.config.files_dir / job["name"]
+            limit = int(job["size"] * 1.05) + 10 * 1024 * 1024
+            for file in job["files"]:
+                if file["path"] in job["verified"]:
+                    continue
+                target = folder.joinpath(*file["path"].split("/"))
+                url = self.source(job["repo"], job["revision"], file["path"])
+                if not download(url, target, file["sha256"], deadline, limit):
+                    return
+                job["verified"].append(file["path"])
+            comment = f"{job['repo']} at {job['revision']}, every file checked against its source"
+            job["task"] = self.client.create_torrent(
+                f"{SAVE_PATH}/{job['name']}", job["trackers"], job["web_seed"], comment
+            )
+            return
+        creation = self.client.creation(job["task"])
+        if creation.get("status") == "Failed":
+            message = f"qBittorrent couldn't make the torrent: {creation.get('errorMessage')}"
+            raise JobError(message)
+        if creation.get("status") == "Finished":
+            self.finish_rebuild(job)
+
+    def finish_rebuild(self, job: dict[str, Any]) -> None:
+        """Leave a torrent built here ready to submit, and put its seeding copy under this script's category."""
+        torrent = self.client.created_torrent(job["task"])
+        try:
+            infohash = info_hash(torrent)
+        except (ValueError, RecursionError) as err:
+            message = f"qBittorrent's torrent file can't be read: {err}"
+            raise JobError(message) from err
+        torrents = self.client.maindata().get("torrents", {})
+        key = next((key for key, value in torrents.items() if value.get("infohash_v1") == infohash), None)
+        if key:
+            self.client.set_category(key)
+        ready = self.config.files_dir / READY_FOLDER
+        ready.mkdir(parents=True, exist_ok=True)
+        (ready / f"{job['name']}.torrent").write_bytes(torrent)
+        trackers = "".join(f"&tr={urllib.parse.quote(tracker, safe='')}" for tracker in job["trackers"])
+        sheet = [
+            f"Model:     {job['repo']}",
+            f"Source:    {self.config.source_url}/{job['repo']}",
+            f"Revision:  {job['revision']}",
+            f"Licence:   {job['license']}",
+            f"Infohash:  {infohash} (v1; the torrent is a v1 and v2 hybrid)",
+            f"Magnet:    magnet:?xt=urn:btih:{infohash}&dn={urllib.parse.quote(job['name'])}{trackers}",
+            f"Files:     {len(job['files'])}, each checked against the listing's SHA-256 before the torrent was made",
+            f"Submit:    {self.index.base_url}/submit, 'Submit a torrent', with {job['name']}.torrent",
+            "",
+            *(f"{file['sha256']}  {file['path']}" for file in job["files"]),
+        ]
+        (ready / f"{job['name']}.txt").write_text("\n".join(sheet) + "\n", encoding="utf-8")
+        self.state["done"][infohash] = {"repo": job["repo"], "why": "added", "size": job["size"], "built": True}
+        self.state["done"][job["old"]] = {"repo": job["repo"], "why": "built here"}
+        self.state["rebuild"] = None
+        seeding = "seeding" if key else "made, but qBittorrent isn't seeding it"
+        log.info("built a torrent for %s (%s): ready to submit, in %s", job["repo"], seeding, ready / job["name"])
+
+    def stalled_near_done(self, snapshot: Snapshot) -> tuple[str, str] | None:
+        """Return one of its torrents that has sat just short of done for long enough to repair, if any."""
+        tracked, now = self.state["near_done"], time.time()
+        current = {key: (infohash, left) for key, infohash, left in snapshot.near_done}
+        for key in set(tracked) - set(current):
+            del tracked[key]
+        found = None
+        for key, (infohash, left) in current.items():
+            entry = tracked.get(key)
+            if entry is None or entry["left"] != left:
+                tracked[key] = {"left": left, "since": now}
+            elif now - entry["since"] >= STALL_SECONDS and key not in self.state["repaired"] and found is None:
+                found = key, infohash
+        return found
+
+    def start_repair(self, key: str, infohash: str) -> None:
+        """Begin fetching a stalled torrent's unfinished files from its source, if its listing names them all."""
+        repaired = self.state["repaired"]
+        repo = self.state["done"].get(infohash, {}).get("repo")
+        if not isinstance(repo, str) or not REPO_RE.match(repo):
+            log.warning("can't repair %s: it isn't one of the torrents this added", key)
+            repaired.append(key)
+            return
+        try:
+            listing = self.index.listing(repo)
+        except JobError as err:
+            log.warning("can't repair %s: %s", repo, err)
+            repaired.append(key)
+            return
+        repaired.append(key)
+        if listing.get("infohash") != infohash:
+            log.warning("can't repair %s: its listing names another torrent now", repo)
+            return
+        checksums = {file["path"]: file["sha256"] for file in listing["files"]}
+        unfinished = []
+        for file in self.client.files(key):
+            if file.get("progress", 1) >= 1 or "/.pad/" in f"/{file.get('name', '')}":
+                continue
+            try:
+                local = safe_relative(file.get("name"))
+            except ValueError as err:
+                log.warning("can't repair %s: %s", repo, err)
+                return
+            path = local.split("/", 1)[1] if "/" in local else local
+            if path not in checksums:
+                log.warning("can't repair %s: its listing has no checksum for %s", repo, path)
+                return
+            unfinished.append({"path": path, "local": local, "sha256": checksums[path], "size": file.get("size", 0)})
+        self.client.stop((key,))
+        self.state["repair"] = {"key": key, "repo": repo, "revision": listing["revision"], "files": unfinished}
+        log.info("repairing %s: fetching its %d unfinished files from its source", repo, len(unfinished))
+
+    def continue_repair(self, deadline: float) -> None:
+        """Fetch the next unfinished file; once all are in place, have qBittorrent check the torrent and start it."""
+        job = self.state["repair"]
+        while job["files"]:
+            file = job["files"][0]
+            target = self.config.files_dir.joinpath(*file["local"].split("/"))
+            url = self.source(job["repo"], job["revision"], file["path"])
+            if not download(url, target, file["sha256"], deadline, file["size"]):
+                return
+            job["files"].pop(0)
+        self.client.recheck(job["key"])
+        self.state["restart"].append(job["key"])
+        self.state["repair"] = None
+        log.info("repaired %s: every unfinished file is in place, and qBittorrent is checking it", job["repo"])
+
+    def step(self, kind: str, work: Callable[[float], None], deadline: float) -> None:
+        """Take a rebuild or repair one poll further; give it up if it can't work."""
+        try:
+            work(deadline)
+        except JobError as err:
+            job = self.state[kind]
+            log.warning("giving up the %s of %s: %s", kind, job["repo"], err)
+            if kind == "rebuild":
+                self.state["done"][job["old"]] = {"repo": job["repo"], "why": "rebuild failed", "error": str(err)}
+            self.state[kind] = None
+
+    def restart_repaired(self) -> None:
+        """Start a repaired torrent once qBittorrent has checked it: a start sent while it checks is lost."""
+        keys = self.state["restart"]
+        if not keys:
+            return
+        states = self.client.states(tuple(keys))
+        for key in list(keys):
+            state = states.get(key, "")
+            if state.startswith(("stopped", "paused")):
+                self.client.start((key,))
+            elif not state.startswith("checking"):
+                keys.remove(key)
+
+    def run_jobs(self, snapshot: Snapshot) -> None:
+        """Repair a stalled torrent, and build a torrent for a model with none, a poll's worth at a time."""
+        deadline = time.time() + self.config.work_seconds
+        self.restart_repaired()
+        if self.state["repair"] is None and (stalled := self.stalled_near_done(snapshot)):
+            self.start_repair(*stalled)
+        if self.state["repair"]:
+            self.step("repair", self.continue_repair, deadline)
+        if self.state["rebuild"] is None and self.config.at_risk and (waiting := self.rebuild_candidate(snapshot)):
+            try:
+                self.start_rebuild(*waiting)
+            except JobError as err:
+                log.warning("not building a torrent for %s: %s", waiting[1]["repo"], err)
+                waiting[1].update({"why": "rebuild failed", "error": str(err)})
+        if self.state["rebuild"]:
+            self.step("rebuild", self.continue_rebuild, deadline)
+
     def run(self) -> None:
         """Run one poll."""
         self.client.login()
-        snapshot = read_snapshot(self.client.maindata(), self.state["done"])
+        snapshot = self.count_jobs(read_snapshot(self.client.maindata(), self.state["done"]))
         self.stop_if_short_of_space(snapshot)
         self.force_finished(snapshot)
         self.give_up_without_metadata(snapshot)
@@ -731,6 +1120,11 @@ class Watch:
                 self.run_at_risk(snapshot)
             except WatchError as err:
                 log.warning("skipping the torrents at risk for now: %s", err)
+        save_state(self.config.state_file, self.state)
+        try:
+            self.run_jobs(snapshot)
+        except WatchError as err:
+            log.warning("the rebuild or repair carries on at the next poll: %s", err)
         save_state(self.config.state_file, self.state)
 
 

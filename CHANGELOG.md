@@ -115,7 +115,11 @@ All notable changes to homelab-deimos are documented here. The format follows
   What a term matches when it first runs stays out. `TORRENT_WATCH_AT_RISK=true` also adds what the index counts as at
   risk, smallest first, whether new or not, within the same limits, each from the index's own `.torrent` file. A model
   whose name marks it as uncensored is never added. A torrent of its own that finds no metadata in a day is removed, which
-  frees its room under the limits. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
+  frees its room under the limits. A torrent at risk with no `.torrent` file gets one built here: its files come from
+  Hugging Face at the revision its listing pins, each checked against the listing's SHA-256, qBittorrent makes and seeds a
+  hybrid torrent of them, and the `.torrent` file waits in `ready-to-submit` for you to submit. A torrent of its own stuck
+  just short of done for 6 hours has its unfinished files fetched the same way. torrent-watch now mounts the torrents'
+  folder, read-write, and never backs it up. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
   It is this repository's own script, on the standard library alone,
   in Python's image, with no ports and a read-only root. The smoke test runs its real poll against qBittorrent.
 - **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port

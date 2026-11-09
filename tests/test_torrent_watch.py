@@ -24,6 +24,8 @@ GB = tw.GB
 OLD = "1" * 40
 NEW = "2" * 40
 NEXT = "3" * 40
+REV = "a" * 40
+KEY = "c" * 40
 
 
 def bencode(value: object) -> bytes:
@@ -68,6 +70,15 @@ class Site:
         self.labels: dict[str, str] = {}
         self.removed: list[dict[str, str]] = []
         self.remove_status = HTTPStatus.OK
+        self.source_files: dict[str, bytes] = {}
+        self.source_status = HTTPStatus.OK
+        self.ranges: list[str] = []
+        self.honour_range = True
+        self.calls: list[tuple[str, dict[str, str]]] = []
+        self.created = make_torrent("4" * 40)
+        self.creation_status = "Finished"
+        self.created_seeding = True
+        self.file_lists: dict[str, list[dict]] = {}
         self.catalogue_answer: str | None = None
         self.index_status = HTTPStatus.OK
         self.add_answer = '{"failure_count":0,"success_count":1}'
@@ -96,6 +107,61 @@ class Site:
         self.catalogue.setdefault(license_name, []).append(model)
         self.serve_torrent(repo, infohash)
 
+    def source_answer(self, path: str, form: dict[str, str]) -> tuple[HTTPStatus, bytes | str, dict[str, str]]:
+        data = self.source_files.get(urllib.parse.unquote(path))
+        if self.source_status != HTTPStatus.OK or data is None:
+            return (self.source_status if data is not None else HTTPStatus.NOT_FOUND), "no", {}
+        start = int(form["range"].removeprefix("bytes=").rstrip("-")) if form.get("range") else 0
+        if form.get("range"):
+            self.ranges.append(form["range"])
+        if not form.get("range") or not self.honour_range:
+            return HTTPStatus.OK, data, {}
+        if start >= len(data):
+            return HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE, "", {}
+        return HTTPStatus.PARTIAL_CONTENT, data[start:], {"Content-Range": f"bytes {start}-{len(data) - 1}/{len(data)}"}
+
+    def qbittorrent_answer(
+        self, url: urllib.parse.SplitResult, form: dict[str, str]
+    ) -> tuple[HTTPStatus, bytes | str, dict[str, str]]:
+        name = url.path.removeprefix("/api/v2/")
+        self.calls.append((name, form))
+        query = dict(urllib.parse.parse_qsl(url.query))
+        if name == "torrentcreator/addTask":
+            if self.created_seeding:
+                self.torrents[KEY] = {"infohash_v1": tw.info_hash(self.created), "category": "", "total_size": 9}
+            return HTTPStatus.OK, '{"taskID":"task-1"}', {}
+        if name == "torrentcreator/status":
+            status = [{"taskID": query["taskID"], "status": self.creation_status, "errorMessage": "disk full"}]
+            return HTTPStatus.OK, json.dumps(status if self.creation_status else []), {}
+        if name == "torrentcreator/torrentFile":
+            return HTTPStatus.OK, self.created, {}
+        if name == "torrents/info":
+            keys = query["hashes"].split("|")
+            found = [
+                {"hash": key, "state": self.torrents[key].get("state", "")} for key in keys if key in self.torrents
+            ]
+            return HTTPStatus.OK, json.dumps(found), {}
+        if name == "torrents/files":
+            return HTTPStatus.OK, json.dumps(self.file_lists.get(query["hash"], [])), {}
+        return HTTPStatus.OK, "", {}
+
+    def needs_torrent(self, url: str, repo: str = "a/bare", files: dict[str, bytes] | None = None) -> dict[str, bytes]:
+        """List repo at risk with no .torrent file, and serve its files at its source."""
+        files = files if files is not None else {"model.bin": b"weights" * 1000, "sub/config.json": b"{}"}
+        self.list_at_risk(repo, NEW)
+        self.serve_torrent(repo, NEW, file=False)
+        self.source_listing(url, repo, files)
+        return files
+
+    def source_listing(self, url: str, repo: str, files: dict[str, bytes]) -> None:
+        answer = self.torrent_answers[repo]
+        seed = urllib.parse.quote(f"{url}/api/ws/{repo}/{REV}/", safe="")
+        answer["magnet"] += f"&tr=udp%3A%2F%2Ftracker.example%3A6969%2Fannounce&tr=ftp%3A%2F%2Fbad&ws={seed}"
+        answer["revision"] = REV
+        answer["files"] = [{"path": path, "sha256": hashlib.sha256(data).hexdigest()} for path, data in files.items()]
+        for path, data in files.items():
+            self.source_files[f"/{repo}/resolve/{REV}/{path}"] = data
+
     def serve_torrent(self, repo: str, label: str, *, file: bool = True) -> None:
         """List a torrent for repo, known in the tests by label, with its .torrent file unless file is False."""
         torrent = make_torrent(label)
@@ -118,6 +184,14 @@ class Site:
             return self.index_status, text, {}
         if url.path == "/api/models" and "license=" in url.query:
             return self.catalogue_page(urllib.parse.parse_qs(url.query))
+        if "/resolve/" in url.path:
+            return self.source_answer(url.path, form)
+        prefixes = ("/api/v2/torrentcreator/", "/api/v2/torrents/files", "/api/v2/torrents/re", "/api/v2/torrents/info")
+        if url.path.startswith(prefixes):
+            return self.qbittorrent_answer(url, form)
+        if url.path in {"/api/v2/torrents/setCategory", "/api/v2/torrents/start"}:
+            self.calls.append((url.path.removeprefix("/api/v2/"), form))
+            return HTTPStatus.OK, "", {}
         if url.path.startswith("/api/torrents/") and url.path.endswith(".torrent"):
             torrent = self.torrent_files.get(url.path.removeprefix("/api/torrents/").removesuffix(".torrent"))
             return (self.index_status, torrent, {}) if torrent else (HTTPStatus.NOT_FOUND, "not here", {})
@@ -169,7 +243,7 @@ def site() -> Iterator[tuple[Site, str]]:
             self.wfile.write(body)
 
         def do_GET(self) -> None:
-            self.respond({})
+            self.respond({"range": self.headers["Range"]} if self.headers.get("Range") else {})
 
         def do_POST(self) -> None:
             length = int(self.headers.get("Content-Length", 0))
@@ -214,6 +288,9 @@ def make_config(url: str, tmp_path: Path, *terms: str, **limits: int) -> tw.Conf
         max_total=limits.get("max_total", 500) * GB,
         min_free=limits.get("min_free", 500) * GB,
         pause_seconds=0,
+        source_url=url,
+        files_dir=tmp_path / "files",
+        work_seconds=60,
     )
 
 
@@ -758,7 +835,8 @@ def test_at_risk_without_a_torrent_file_waits_until_the_index_has_one(
         run(config)
     assert stand_in.added == []
     assert sum("no .torrent on the index" in message for message in caplog.messages) == 1
-    assert state_of(config)["done"][stand_in.real[NEW]]["why"] == "no .torrent on the index"
+    # Its listing has nothing to build a torrent from, so that was tried once and not again.
+    assert state_of(config)["done"][stand_in.real[NEW]]["why"] == "rebuild failed"
     stand_in.serve_torrent("a/bare", NEW)
     rescan(config)
     run(config)
@@ -873,6 +951,423 @@ def test_a_model_given_up_on_is_taken_again_once_the_index_has_its_torrent_file(
     config.state_file.write_text(json.dumps(state), encoding="utf-8")
     run(config)
     assert magnets(stand_in) == [NEW]
+
+
+def calls(stand_in: Site, name: str) -> list[dict[str, str]]:
+    return [form for called, form in stand_in.calls if called == name]
+
+
+def test_a_model_with_no_torrent_file_gets_a_torrent_built_here_ready_to_submit(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    files = stand_in.needs_torrent(config.index_url)
+    caplog.set_level(logging.INFO, logger="torrent-watch")
+    run(config)
+    folder = config.files_dir / "a__bare"
+    assert {path: (folder / path).read_bytes() for path in files} == files
+    assert calls(stand_in, "torrentcreator/addTask") == [
+        {
+            "sourcePath": "/downloads/watch/a__bare",
+            "format": "hybrid",
+            "startSeeding": "true",
+            "comment": f"a/bare at {REV}, every file checked against its source",
+            "trackers": "udp://tracker.example:6969/announce",
+            "urlSeeds": f"{config.index_url}/api/ws/a/bare/{REV}/",
+        }
+    ]
+    assert stand_in.added == []
+    run(config)
+    ready = config.files_dir / tw.READY_FOLDER
+    assert (ready / "a__bare.torrent").read_bytes() == stand_in.created
+    sheet = (ready / "a__bare.txt").read_text(encoding="utf-8")
+    infohash = tw.info_hash(stand_in.created)
+    for expected in ("a/bare", REV, "mit", f"{config.index_url}/submit", infohash, hashlib.sha256(b"{}").hexdigest()):
+        assert expected in sheet
+    assert calls(stand_in, "torrents/setCategory") == [{"hashes": KEY, "category": tw.CATEGORY}]
+    assert calls(stand_in, "torrentcreator/deleteTask") == [{"taskID": "task-1"}]
+    state = state_of(config)
+    assert state["done"][infohash] == {"repo": "a/bare", "why": "added", "size": GB, "built": True}
+    assert state["done"][stand_in.real[NEW]]["why"] == "built here"
+    assert state["rebuild"] is None
+    assert any("ready to submit" in message for message in caplog.messages)
+    run(config)
+    assert len(calls(stand_in, "torrentcreator/addTask")) == 1
+
+
+def test_a_rebuild_carries_on_across_polls_from_where_it_stopped(
+    at_risk: tuple[Site, tw.Config], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in, config = at_risk
+    monkeypatch.setattr(tw, "CHUNK_BYTES", 1000)
+    files = stand_in.needs_torrent(config.index_url)
+    run(config._replace(work_seconds=0))
+    part = config.files_dir / "a__bare" / "model.bin.part"
+    assert part.stat().st_size == 1000
+    assert not (config.files_dir / "a__bare" / "model.bin").exists()
+    assert calls(stand_in, "torrentcreator/addTask") == []
+    run(config)
+    assert (config.files_dir / "a__bare" / "model.bin").read_bytes() == files["model.bin"]
+    assert "bytes=1000-" in stand_in.ranges
+    assert len(calls(stand_in, "torrentcreator/addTask")) == 1
+
+
+def test_a_rebuild_starts_a_file_again_when_the_source_ignores_the_range(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    files = stand_in.needs_torrent(config.index_url)
+    folder = config.files_dir / "a__bare"
+    folder.mkdir(parents=True)
+    (folder / "model.bin.part").write_bytes(b"junk from an earlier try")
+    stand_in.honour_range = False
+    run(config)
+    assert (folder / "model.bin").read_bytes() == files["model.bin"]
+
+
+def test_a_part_file_already_complete_is_checked_and_kept(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    files = stand_in.needs_torrent(config.index_url)
+    folder = config.files_dir / "a__bare"
+    folder.mkdir(parents=True)
+    (folder / "model.bin.part").write_bytes(files["model.bin"])
+    run(config)
+    assert (folder / "model.bin").read_bytes() == files["model.bin"]
+    assert f"bytes={len(files['model.bin'])}-" in stand_in.ranges
+
+
+def test_a_file_that_doesnt_match_its_checksum_ends_the_rebuild(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.source_files[f"/a/bare/resolve/{REV}/model.bin"] = b"something else"
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert calls(stand_in, "torrentcreator/addTask") == []
+    assert not (config.files_dir / "a__bare" / "model.bin.part").exists()
+    state = state_of(config)
+    assert state["rebuild"] is None
+    entry = state["done"][stand_in.real[NEW]]
+    assert entry["why"] == "rebuild failed"
+    assert entry["error"].startswith("model.bin from the source doesn't match")
+    # The model is still at risk with no .torrent file, but its rebuild isn't tried again at the next scan.
+    rescan(config)
+    run(config)
+    assert calls(stand_in, "torrentcreator/addTask") == []
+    assert state_of(config)["done"][stand_in.real[NEW]]["why"] == "rebuild failed"
+
+
+def test_a_source_that_fails_for_now_is_tried_again(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.source_status = HTTPStatus.BAD_GATEWAY
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any("carries on at the next poll" in message for message in caplog.messages)
+    assert state_of(config)["rebuild"]["repo"] == "a/bare"
+    stand_in.source_status = HTTPStatus.OK
+    run(config)
+    assert len(calls(stand_in, "torrentcreator/addTask")) == 1
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        [{"path": "../escape", "sha256": "0" * 64}],
+        [{"path": "/etc/passwd", "sha256": "0" * 64}],
+        [{"path": "a\\b", "sha256": "0" * 64}],
+        [{"path": "a//b", "sha256": "0" * 64}],
+        [{"path": "model.bin", "sha256": "not a checksum"}],
+        [{"path": 5, "sha256": "0" * 64}],
+        [],
+    ],
+)
+def test_a_listing_that_isnt_safe_to_build_from_is_left_alone(
+    at_risk: tuple[Site, tw.Config], tmp_path: Path, files: list[dict]
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.torrent_answers["a/bare"]["files"] = files
+    run(config)
+    assert calls(stand_in, "torrentcreator/addTask") == []
+    assert not (tmp_path / "escape").exists()
+    entry = state_of(config)["done"][stand_in.real[NEW]]
+    assert entry["why"] == "rebuild failed"
+    assert entry["error"].startswith("the listing of a/bare")
+
+
+@pytest.mark.parametrize("change", [{"torrent": f"/api/torrents/{'f' * 40}.torrent"}, {"seeders": 1}])
+def test_a_model_whose_listing_changed_isnt_built_and_is_looked_at_again(
+    at_risk: tuple[Site, tw.Config], change: dict
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    real = stand_in.real[NEW]
+    state = {"done": {real: {"repo": "a/bare", "why": tw.NEEDS_TORRENT, "license": "mit", "size": GB}}}
+    state["at_risk"] = {"scanned": time.time(), "models": []}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    stand_in.torrent_answers["a/bare"].update(change)
+    run(config)
+    assert state_of(config)["done"][real]["why"] == "check again"
+    assert state_of(config)["rebuild"] is None
+
+
+def test_a_rebuild_over_the_limits_isnt_started(at_risk: tuple[Site, tw.Config]) -> None:
+    _, config = at_risk
+    big = {"repo": "a/big", "why": tw.NEEDS_TORRENT, "license": "mit", "size": 600 * GB}
+    state = {"done": {"9" * 40: big}, "at_risk": {"scanned": time.time(), "models": []}}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert state_of(config)["rebuild"] is None
+
+
+def test_a_rebuild_counts_toward_the_limits_while_it_runs(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/small", NEXT)
+    job = {
+        "repo": "a/bare", "license": "mit", "size": 500 * GB, "name": "a__bare", "old": "9" * 40, "revision": REV,
+        "files": [], "verified": [], "trackers": [], "web_seed": None, "magnet": "", "task": None,
+    }  # fmt: skip
+    config.state_file.write_text(json.dumps({"rebuild": job}), encoding="utf-8")
+    run(config)
+    assert stand_in.added == []
+    assert calls(stand_in, "torrentcreator/addTask")[-1]["sourcePath"] == "/downloads/watch/a__bare"
+    # Once qBittorrent is making it, its seeding copy counts as qBittorrent's own, so there is room again here.
+    run(config)
+    assert magnets(stand_in) == [NEXT]
+
+
+@pytest.mark.parametrize(("status", "torrent"), [("Failed", None), ("", None), ("Finished", b"not a torrent")])
+def test_a_torrent_qbittorrent_couldnt_make_ends_the_rebuild(
+    at_risk: tuple[Site, tw.Config], status: str, torrent: bytes | None
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.creation_status = status
+    if torrent:
+        stand_in.created = torrent
+        stand_in.created_seeding = False
+    run(config)
+    run(config)
+    entry = state_of(config)["done"][stand_in.real[NEW]]
+    assert state_of(config)["rebuild"] is None
+    assert entry["why"] == "rebuild failed"
+    assert entry["error"].startswith("qBittorrent")
+
+
+def test_a_torrent_still_being_made_is_looked_at_again(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.creation_status = "Running"
+    run(config)
+    run(config)
+    assert state_of(config)["rebuild"]["task"] == "task-1"
+    stand_in.creation_status = "Finished"
+    run(config)
+    assert state_of(config)["rebuild"] is None
+
+
+def test_a_torrent_made_but_not_seeding_is_still_left_ready_to_submit(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    stand_in.created_seeding = False
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+        run(config)
+    assert (config.files_dir / tw.READY_FOLDER / "a__bare.torrent").exists()
+    assert calls(stand_in, "torrents/setCategory") == []
+    assert any("isn't seeding it" in message for message in caplog.messages)
+
+
+def test_qbittorrent_not_starting_the_torrent_is_tried_again(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    original = stand_in.qbittorrent_answer
+
+    def garbled(url: urllib.parse.SplitResult, form: dict[str, str]) -> tuple[HTTPStatus, bytes | str, dict[str, str]]:
+        if url.path.endswith("addTask"):
+            return HTTPStatus.OK, "not json", {}
+        return original(url, form)
+
+    stand_in.qbittorrent_answer = garbled  # type: ignore[method-assign]
+    run(config)
+    assert state_of(config)["rebuild"]["task"] is None
+    stand_in.qbittorrent_answer = original  # type: ignore[method-assign]
+    run(config)
+    assert state_of(config)["rebuild"]["task"] == "task-1"
+
+
+def test_no_rebuild_without_at_risk_or_for_an_uncensored_name(watching: tuple[Site, tw.Config]) -> None:
+    _, config = watching
+    state = state_of(config)
+    state["done"]["9" * 40] = {"repo": "a/bare", "why": tw.NEEDS_TORRENT, "license": "mit", "size": GB}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert state_of(config)["rebuild"] is None
+    state = state_of(config)
+    state["done"]["9" * 40]["repo"] = "a/model-uncensored"
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config._replace(at_risk=True))
+    assert state_of(config)["rebuild"] is None
+
+
+def test_download_refuses_a_file_larger_than_its_limit(site: tuple[Site, str], tmp_path: Path) -> None:
+    stand_in, url = site
+    stand_in.source_files["/a/b/resolve/x/big"] = b"x" * 100
+    with pytest.raises(tw.JobError, match="larger than the whole model"):
+        tw.download(f"{url}/a/b/resolve/x/big", tmp_path / "big", "0" * 64, time.time() + 60, 50)
+
+
+@pytest.mark.parametrize("path", ["", ".", "a/../b", "a/./b", "a\\b", "a\x00", None])
+def test_a_path_that_could_leave_its_folder_is_refused(path: object) -> None:
+    with pytest.raises(ValueError):  # noqa: PT011 # any refusal will do
+        tw.safe_relative(path)
+
+
+def stalled(stand_in: Site, config: tw.Config, data: bytes) -> Path:
+    """One of its torrents, a/stuck, stalled at 99.5 % with model.bin unfinished; return where model.bin is."""
+    stand_in.torrent_answers["a/stuck"] = {"magnet": f"magnet:?xt=urn:btih:{NEW}", "seeders": 0, "infohash": NEW}
+    stand_in.source_listing(config.index_url, "a/stuck", {"model.bin": data, "README.md": b"read me"})
+    stand_in.torrents = {
+        KEY: {"infohash_v1": NEW, "category": tw.CATEGORY, "total_size": 2000, "amount_left": 10, "progress": 0.995}
+    }
+    stand_in.file_lists[KEY] = [
+        {"name": "a__stuck/model.bin", "size": len(data), "progress": 0.9},
+        {"name": "a__stuck/README.md", "size": 7, "progress": 1},
+        {"name": "a__stuck/.pad/123", "size": 123, "progress": 0},
+    ]
+    state = {"done": {NEW: {"repo": "a/stuck", "why": "added", "size": 2000}}}
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    target = config.files_dir / "a__stuck" / "model.bin"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"partial")
+    return target
+
+
+def age_near_done(config: tw.Config, seconds: float) -> None:
+    state = state_of(config)
+    for entry in state["near_done"].values():
+        entry["since"] -= seconds
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+
+
+def test_its_torrent_stalled_just_short_of_done_gets_its_unfinished_files_from_the_source_once(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    data = b"weights" * 300
+    target = stalled(stand_in, config, data)
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS - 60)
+    run(config)
+    assert calls(stand_in, "torrents/recheck") == []
+    age_near_done(config, 120)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+    assert target.read_bytes() == data
+    assert stand_in.stopped == [KEY]
+    assert calls(stand_in, "torrents/recheck") == [{"hashes": KEY}]
+    assert calls(stand_in, "torrents/start") == []
+    assert any("repaired a/stuck" in message for message in caplog.messages)
+    state = state_of(config)
+    assert state["repaired"] == [KEY]
+    assert state["repair"] is None
+    assert state["restart"] == [KEY]
+    # qBittorrent drops a start sent while it checks, so it waits for the check to end, and repeats until it holds.
+    stand_in.torrents[KEY].update({"state": "checkingUP", "amount_left": 0, "progress": 1})
+    run(config)
+    assert calls(stand_in, "torrents/start") == []
+    stand_in.torrents[KEY]["state"] = "stoppedUP"
+    run(config)
+    run(config)
+    assert calls(stand_in, "torrents/start") == [{"hashes": KEY}, {"hashes": KEY}]
+    stand_in.torrents[KEY]["state"] = "stalledUP"
+    run(config)
+    assert state_of(config)["restart"] == []
+    age_near_done(config, tw.STALL_SECONDS)
+    run(config)
+    assert len(calls(stand_in, "torrents/recheck")) == 1
+    stand_in.torrents = {}
+    state = state_of(config)
+    state["restart"] = [KEY]
+    config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    assert state_of(config)["restart"] == []
+
+
+def test_a_torrent_still_moving_isnt_repaired(watching: tuple[Site, tw.Config]) -> None:
+    stand_in, config = watching
+    stalled(stand_in, config, b"weights")
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    stand_in.torrents[KEY]["amount_left"] = 5
+    run(config)
+    stand_in.torrents = {}
+    run(config)
+    assert state_of(config)["near_done"] == {}
+    assert calls(stand_in, "torrents/recheck") == []
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"listing": {"infohash": "f" * 40}}, "its listing names another torrent now"),
+        ({"listing": {"files": []}}, "isn't one to build a torrent from"),
+        ({"file": "a__stuck/other.bin"}, "its listing has no checksum for other.bin"),
+        ({"file": "../outside"}, "a path that leaves its folder"),
+        ({"done": {}}, "it isn't one of the torrents this added"),
+    ],
+)
+def test_a_torrent_that_cant_be_repaired_is_left_as_it_is_and_not_tried_again(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture, change: dict, expected: str
+) -> None:
+    stand_in, config = watching
+    stalled(stand_in, config, b"weights")
+    stand_in.torrent_answers["a/stuck"].update(change.get("listing", {}))
+    if "file" in change:
+        stand_in.file_lists[KEY][0]["name"] = change["file"]
+    if "done" in change:
+        state = state_of(config)
+        state["done"] = change["done"]
+        config.state_file.write_text(json.dumps(state), encoding="utf-8")
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any(expected in message for message in caplog.messages)
+    assert stand_in.stopped == []
+    assert state_of(config)["repaired"] == [KEY]
+
+
+def test_a_repair_whose_file_doesnt_match_is_given_up(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    target = stalled(stand_in, config, b"weights")
+    stand_in.source_files[f"/a/stuck/resolve/{REV}/model.bin"] = b"weightz"
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any("giving up the repair of a/stuck" in message for message in caplog.messages)
+    assert target.read_bytes() == b"partial"
+    assert state_of(config)["repair"] is None
+
+
+def test_a_repair_listing_that_cant_be_fetched_is_tried_again(watching: tuple[Site, tw.Config]) -> None:
+    stand_in, config = watching
+    stalled(stand_in, config, b"weights")
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    stand_in.index_status = HTTPStatus.BAD_GATEWAY
+    run(config)
+    assert state_of(config)["repaired"] == []
+    stand_in.index_status = HTTPStatus.OK
+    run(config)
+    assert state_of(config)["repaired"] == [KEY]
 
 
 @pytest.mark.parametrize("free", [0, None, "1000"])
@@ -1134,6 +1629,11 @@ def test_a_damaged_state_file_starts_again(tmp_path: Path, content: str) -> None
         "forced": [],
         "at_risk": {},
         "no_metadata": {},
+        "near_done": {},
+        "repaired": [],
+        "rebuild": None,
+        "repair": None,
+        "restart": [],
     }
 
 

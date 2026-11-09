@@ -71,7 +71,9 @@ qBittorrent ◀──BitTorrent, port 50881──▶ peers on the internet
 qBittorrent ──HTTP(S), UDP──▶ trackers
 
 torrent-watch ──HTTPS──▶ the model index: searches, licences and sizes
-torrent-watch ──REST──▶ qBittorrent (inside the stack): reads the free space, adds magnet links
+torrent-watch ──REST──▶ qBittorrent (inside the stack): reads the free space, adds torrents, makes torrents, rechecks
+torrent-watch ──HTTPS──▶ Hugging Face: the files of a torrent it builds or repairs, checked against the index's SHA-256
+torrent-watch ──read/write──▶ the torrents' files (the folder qBittorrent shares)
 
 autoheal ──(internal network)──▶ socket-proxy ──read-only socket──▶ Docker: restarts unhealthy containers
 Dozzle on another host ──port 7007──▶ Dozzle agent ──read-only socket──▶ Docker: container logs

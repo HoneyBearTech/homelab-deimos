@@ -346,6 +346,20 @@ until you remove it.
 **A torrent of its own that has found no metadata in a day** (a magnet link nobody can complete) is removed from
 qBittorrent. Nothing of it was downloaded, so nothing is lost, and its room under the limits is free again.
 
+**A torrent at risk with no `.torrent` file gets one built here**, one model at a time, with torrents at risk asked for.
+torrent-watch downloads the files its listing names from the model's source (Hugging Face) at the revision the listing
+pins, checks each against the listing's SHA-256, and has qBittorrent make a hybrid (BitTorrent v1 and v2) torrent of
+them with the listing's trackers and web seed, which it seeds. The files go where the index's own torrent would have put
+them, in `/downloads/watch/<author>__<model>`, and count toward the limits from the start. A download that runs past 20
+minutes carries on at the next poll. The `.torrent` file, and a sheet with the model, revision, licence, magnet link and
+every file's checksum, are left in `/downloads/watch/ready-to-submit` for you to submit with the index's submit form,
+under your own account: nothing is submitted for you. A file that doesn't match its checksum ends that model's rebuild
+for good; the model is still taken if the index has a `.torrent` file for it later.
+
+**A torrent of its own stuck just short of done** for 6 hours (the index's web seed stalls plain v1 torrents with
+several files at 99 %) is repaired once: torrent-watch stops it, fetches its unfinished files from the model's source,
+checks each against the listing's SHA-256, puts them in place, and has qBittorrent check the torrent again and start it.
+
 **Watch terms** are separated by commas. Words (`qwen gguf`) match any model with those words in its name, whoever
 made it; one author with a slash after it (`someone/`) keeps only that author's models. Keep them narrow: the index's
 search stops at about 90 rows, best-seeded first, so a new torrent with no seeders can miss a long list. The log warns
@@ -356,7 +370,8 @@ about a term that matches 75 or more.
 give each one's `id`, `license` and `sizeBytes`. For torrents at risk, `GET /api/models?license=<licence>` must list them
 page by page (`nextCursor`, `seeded`, `seed`, `hfBacked`), and `GET /api/torrents?repo=<author>/<model>` give `magnet`,
 `seeders` and `torrent`, the path of its `.torrent` file (`/api/torrents/<infohash>.torrent`). If it stops answering like that, nothing is added, and the log says
-why. Its word for a licence is all this has to go on: read the licence before relying on a model.
+why. To build or repair a torrent, a listing must also give `revision`, the source's commit, and `files`, each file's
+`path` and `sha256`; a path that would leave the model's folder ends that rebuild or repair. Its word for a licence is all this has to go on: read the licence before relying on a model.
 
 ## Scheduled backups
 
