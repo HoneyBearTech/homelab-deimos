@@ -666,16 +666,28 @@ def test_at_risk_keeps_to_the_limits_and_says_so(
     with caplog.at_level(logging.INFO, logger="torrent-watch"):
         run(config)
     assert magnets(stand_in) == [NEW]
-    assert any("3 listed, 2 kept out by the limits, 0 waiting" in message for message in caplog.messages)
+    assert any(
+        "3 listed, 2 kept out by the limits, 0 waiting for a later poll "
+        "(limit for all 1, limit per torrent 1; 5.0 of 6 GB for all of them," in message
+        for message in caplog.messages
+    )
 
 
-def test_at_risk_counts_the_free_space_of_what_it_just_added(at_risk: tuple[Site, tw.Config]) -> None:
+def test_at_risk_counts_the_free_space_of_what_it_just_added(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
     stand_in, config = at_risk
     stand_in.free = 510 * GB
     stand_in.list_at_risk("a/first", NEW, 8)
     stand_in.list_at_risk("a/second", NEXT, 8)
-    run(config)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
     assert magnets(stand_in) == [NEW]
+    assert any(
+        "1 kept out by the limits, 0 waiting for a later poll (free space 1; 8.0 of 500 GB for all of them, "
+        "510.0 GB free with 8.0 GB still to download, keeping 500 GB free)" in message
+        for message in caplog.messages
+    )
 
 
 def test_at_risk_adds_a_few_per_poll_from_the_list_it_has_and_asks_again_when_it_is_old(
