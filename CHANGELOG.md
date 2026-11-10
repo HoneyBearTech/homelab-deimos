@@ -122,6 +122,9 @@ All notable changes to homelab-deimos are documented here. The format follows
   folder, read-write, and never backs it up. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
   It is this repository's own script, on the standard library alone,
   in Python's image, with no ports and a read-only root. The smoke test runs its real poll against qBittorrent.
+  When models are kept out, its at-risk log line names the check that stopped each, the total against its limit and
+  the free space against the floor; when the total limit is one of them, it also gives how many torrents the category
+  holds and the five largest.
 - **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port
   50881: a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from torrent
   files and magnet links. It has a new required setting, `TORRENTS_PATH`, the only files it can reach, which is never
