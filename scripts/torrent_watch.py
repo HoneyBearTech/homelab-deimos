@@ -114,6 +114,7 @@ BROAD_TERM_ROWS = 75
 TIMEOUT_SECONDS = 30
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 GB = 1000**3  # as the index counts them
+LARGEST_SHOWN = 5  # torrents named when the total limit keeps models out
 ROW_RE = re.compile(r"^(?P<repo>[\w.-]+/[\w.-]+)\s.*\s(?P<magnet>magnet:\?\S+)\s*$")
 MAGNET_RE = re.compile(r"^magnet:\?xt=urn:btih:(?P<hash>[0-9a-fA-F]{40})(?:&\S*)?$")
 NO_MATCH = "No torrents match"
@@ -183,6 +184,8 @@ class Snapshot(NamedTuple):
     seeding: tuple[str, ...]
     no_metadata: tuple[str, ...] = ()
     near_done: tuple[tuple[str, str, int], ...] = ()
+    held: int = 0
+    largest: tuple[tuple[str, int], ...] = ()
 
 
 def parse_term(text: str) -> Term:
@@ -650,6 +653,7 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
     known: set[str] = set()
     total = left = 0
     incomplete, seeding, no_metadata, near_done = [], [], [], []
+    sizes: list[tuple[str, int]] = []
     for key, torrent in maindata.get("torrents", {}).items():
         infohash = torrent.get("infohash_v1") or key
         known |= {key, infohash}
@@ -660,6 +664,7 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
         left += remaining
         if torrent.get("category") == CATEGORY:
             total += size
+            sizes.append((str(torrent.get("name") or key), size))
             if remaining > 0 and not torrent.get("state", "").startswith(("stopped", "paused")):
                 incomplete.append(key)
             if not has_metadata:
@@ -669,7 +674,8 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
         if torrent.get("state") in SEEDING_STATES:
             seeding.append(key)
     lists = (tuple(incomplete), tuple(seeding), tuple(no_metadata), tuple(near_done))
-    return Snapshot(free, frozenset(known), total, left, *lists)
+    largest = tuple(sorted(sizes, key=lambda item: item[1], reverse=True)[:LARGEST_SHOWN])
+    return Snapshot(free, frozenset(known), total, left, *lists, held=len(sizes), largest=largest)
 
 
 def check_limits(details: Details, config: Config, snapshot: Snapshot) -> tuple[str, str] | None:
@@ -696,11 +702,15 @@ def refusal(details: Details, config: Config, snapshot: Snapshot) -> str | None:
 def describe_limits(kept_out: Counter[str], config: Config, snapshot: Snapshot) -> str:
     """Say which checks kept models out, and where the share and this script's torrents stand against the limits."""
     counts = ", ".join(f"{name} {count}" for name, count in kept_out.most_common())
-    return (
+    text = (
         f"{counts}; {snapshot.total / GB:.1f} of {config.max_total / GB:.0f} GB for all of them, "
         f"{snapshot.free / GB:.1f} GB free with {snapshot.left / GB:.1f} GB still to download, "
         f"keeping {config.min_free / GB:.0f} GB free"
     )
+    if "limit for all" in kept_out and snapshot.held:
+        largest = ", ".join(f"{name} {size / GB:.1f} GB" for name, size in snapshot.largest)
+        text += f"; the category holds {snapshot.held} torrents, the largest {largest}"
+    return text
 
 
 def load_state(path: Path) -> dict[str, Any]:

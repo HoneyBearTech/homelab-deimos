@@ -673,6 +673,28 @@ def test_at_risk_keeps_to_the_limits_and_says_so(
     )
 
 
+def test_at_risk_names_what_fills_the_total_limit(
+    at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = at_risk
+    config = config._replace(max_total=20 * GB)
+    stand_in.torrents = {
+        f"{n:040d}": {"name": f"big-{n}", "category": tw.CATEGORY, "total_size": n * GB, "amount_left": 0}
+        for n in range(1, 8)
+    }
+    stand_in.torrents["f" * 40] = {"name": "elsewhere", "category": "", "total_size": 99 * GB, "amount_left": 0}
+    stand_in.list_at_risk("a/over-total", NEW, 5)
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+    assert stand_in.added == []
+    assert any(
+        "the category holds 7 torrents, the largest big-7 7.0 GB, big-6 6.0 GB, big-5 5.0 GB, big-4 4.0 GB, "
+        "big-3 3.0 GB" in message
+        for message in caplog.messages
+    )
+    assert not any("elsewhere" in message for message in caplog.messages)
+
+
 def test_at_risk_counts_the_free_space_of_what_it_just_added(
     at_risk: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
 ) -> None:
