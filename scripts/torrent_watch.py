@@ -524,10 +524,29 @@ class Qbittorrent:
         self.cookies = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
 
+    def read(self, path: str, body: bytes | None = None, content_type: str | None = None) -> bytes:
+        """Call the API, with POST if there's a body; anything but a success raises.
+
+        qBittorrent answers 403 once its session has ended, which a long download inside one poll can outlast, so a 403
+        signs in again and tries once more.
+        """
+        url, what = f"{self.url}/api/v2/{path}", f"qBittorrent's {path}"
+        try:
+            return read_bytes(self.opener, url, body, what, content_type)
+        except WatchError as err:
+            cause = err.__cause__
+            if path == "auth/login" or not (
+                isinstance(cause, urllib.error.HTTPError) and cause.code == HTTPStatus.FORBIDDEN
+            ):
+                raise
+        log.info("qBittorrent's session had ended, so signing in again")
+        self.login()
+        return read_bytes(self.opener, url, body, what, content_type)
+
     def call(self, path: str, data: dict[str, str] | None = None) -> str:
-        """Call the API, with POST if there's data; anything but a success raises."""
+        """Call the API as text, with POST if there's data."""
         body = urllib.parse.urlencode(data).encode() if data is not None else None
-        return read_url(self.opener, f"{self.url}/api/v2/{path}", body, f"qBittorrent's {path}")
+        return self.read(path, body).decode("utf-8", "replace")
 
     def login(self) -> None:
         """Sign in; qBittorrent answers a wrong password with 401, or (before 5.2) with no session cookie."""
@@ -562,9 +581,7 @@ class Qbittorrent:
     def add_file(self, torrent: bytes, infohash: str) -> None:
         """Add a .torrent file under this script's category and folder."""
         body, content_type = multipart(ADD_OPTIONS, "torrents", f"{infohash}.torrent", torrent)
-        url = f"{self.url}/api/v2/torrents/add"
-        answer = read_bytes(self.opener, url, body, "qBittorrent's torrents/add", content_type)
-        check_added(answer.decode("utf-8", "replace"))
+        check_added(self.read("torrents/add", body, content_type).decode("utf-8", "replace"))
 
     def create_torrent(self, source: str, trackers: list[str], web_seed: str | None, comment: str) -> str:
         """Have qBittorrent make a hybrid torrent of a folder and seed it; return the task's ID."""
@@ -585,7 +602,7 @@ class Qbittorrent:
     def created_torrent(self, task: str) -> bytes:
         """Return the .torrent file qBittorrent made, and forget the task."""
         query = urllib.parse.urlencode({"taskID": task})
-        torrent = read_bytes(self.opener, f"{self.url}/api/v2/torrentcreator/torrentFile?{query}", None, "the torrent")
+        torrent = self.read(f"torrentcreator/torrentFile?{query}")
         self.call("torrentcreator/deleteTask", {"taskID": task})
         return torrent
 

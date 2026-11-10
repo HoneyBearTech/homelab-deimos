@@ -83,6 +83,9 @@ class Site:
         self.index_status = HTTPStatus.OK
         self.add_answer = '{"failure_count":0,"success_count":1}'
         self.refusal = HTTPStatus.UNAUTHORIZED
+        self.logins = 0
+        self.session_ends: set[str] = set()
+        self.always_forbidden: set[str] = set()
 
     def catalogue_page(self, query: dict[str, list[str]]) -> tuple[HTTPStatus, str, dict[str, str]]:
         if self.catalogue_answer is not None:
@@ -177,6 +180,10 @@ class Site:
     ) -> tuple[HTTPStatus, str | bytes, dict[str, str]]:
         url = urllib.parse.urlsplit(path)
         self.requests.append(path)
+        name = url.path.removeprefix("/api/v2/")
+        if name in self.session_ends or name in self.always_forbidden:
+            self.session_ends.discard(name)
+            return HTTPStatus.FORBIDDEN, "Forbidden", {}
         if url.path.startswith("/s/"):
             term = urllib.parse.unquote_plus(url.path.removeprefix("/s/"))
             lines = self.search.get(term)
@@ -206,6 +213,7 @@ class Site:
             models = [{"id": repo, **self.models[repo]}] if repo in self.models else []
             return self.index_status, json.dumps({"models": models}), {}
         if url.path == "/api/v2/auth/login":
+            self.logins += 1
             if form.get("password") == self.password:
                 return HTTPStatus.OK, "Ok.", {"Set-Cookie": "SID=session; path=/"}
             return self.refusal, "Fails.", {}
@@ -1340,6 +1348,60 @@ def test_a_torrent_that_cant_be_repaired_is_left_as_it_is_and_not_tried_again(
     assert any(expected in message for message in caplog.messages)
     assert stand_in.stopped == []
     assert state_of(config)["repaired"] == [KEY]
+
+
+@pytest.mark.parametrize("call", ["torrents/recheck", "torrents/stop", "torrents/files", "sync/maindata"])
+def test_a_session_that_ended_mid_poll_signs_in_again_and_carries_on(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture, call: str
+) -> None:
+    stand_in, config = watching
+    data = b"weights" * 300
+    target = stalled(stand_in, config, data)
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    stand_in.session_ends.add(call)
+    logins = stand_in.logins
+    with caplog.at_level(logging.INFO, logger="torrent-watch"):
+        run(config)
+    assert stand_in.logins == logins + 2
+    assert any("signing in again" in message for message in caplog.messages)
+    assert target.read_bytes() == data
+    assert calls(stand_in, "torrents/recheck") == [{"hashes": KEY}]
+    assert state_of(config)["repair"] is None
+
+
+def test_a_403_that_signing_in_again_doesnt_cure_is_still_an_error(
+    watching: tuple[Site, tw.Config], caplog: pytest.LogCaptureFixture
+) -> None:
+    stand_in, config = watching
+    stalled(stand_in, config, b"weights")
+    run(config)
+    age_near_done(config, tw.STALL_SECONDS)
+    stand_in.always_forbidden.add("torrents/recheck")
+    with caplog.at_level(logging.WARNING, logger="torrent-watch"):
+        run(config)
+    assert any("carries on at the next poll" in message and "403" in message for message in caplog.messages)
+    assert state_of(config)["repair"] is not None
+    stand_in.always_forbidden.clear()
+    run(config)
+    assert state_of(config)["repair"] is None
+
+
+def test_a_session_that_ended_before_a_file_upload_signs_in_again(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.list_at_risk("a/risky", NEW)
+    stand_in.session_ends.add("torrents/add")
+    run(config)
+    assert magnets(stand_in) == [NEW]
+
+
+def test_a_session_that_ended_before_fetching_a_built_torrent_signs_in_again(at_risk: tuple[Site, tw.Config]) -> None:
+    stand_in, config = at_risk
+    stand_in.needs_torrent(config.index_url)
+    run(config)
+    stand_in.session_ends.add("torrentcreator/torrentFile")
+    run(config)
+    assert (config.files_dir / tw.READY_FOLDER / "a__bare.torrent").read_bytes() == stand_in.created
 
 
 def test_a_repair_whose_file_doesnt_match_is_given_up(
