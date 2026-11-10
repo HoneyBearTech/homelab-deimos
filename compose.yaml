@@ -346,7 +346,7 @@ services:
       TORRENT_WATCH_QBITTORRENT_USERNAME: ${TORRENT_WATCH_QBITTORRENT_USERNAME:-admin}
       # The script's checksum (a test checks it): Compose doesn't recreate a container when only a file mounted into it
       # changes, and a pull replaces that file, which leaves the running container's mount pointing at nothing.
-      TORRENT_WATCH_SCRIPT_SHA256: 43e00b6641a0783ee380d7e5465cb5d90157e7daf34f5723d8f942a97e631a5f
+      TORRENT_WATCH_SCRIPT_SHA256: ad4518dc90d40c4150cda71b56e49eb72be8f74ddc3684320a869b33ce2f25e3
     labels:
       autoheal: "true"
       # The torrents' files, qBittorrent's as well: large, and on storage of their own.
