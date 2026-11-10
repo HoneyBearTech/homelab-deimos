@@ -57,6 +57,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from collections import Counter
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -671,19 +672,35 @@ def read_snapshot(maindata: dict[str, Any], done: dict[str, dict[str, Any]]) -> 
     return Snapshot(free, frozenset(known), total, left, *lists)
 
 
+def check_limits(details: Details, config: Config, snapshot: Snapshot) -> tuple[str, str] | None:
+    """Return which check keeps a torrent out now and why, or None if none does."""
+    if details.license not in ALLOWED_LICENSES:
+        return "licence", f"its licence is {details.license or 'unknown'}"
+    if details.size is None:
+        return "unknown size", "its size is unknown"
+    if details.size > config.max_torrent:
+        return "limit per torrent", f"{details.size / GB:.1f} GB is over the limit per torrent"
+    if snapshot.total + details.size > config.max_total:
+        return "limit for all", f"{details.size / GB:.1f} GB would go over the limit for all of them"
+    if snapshot.free - snapshot.left - details.size < config.min_free:
+        return "free space", f"{details.size / GB:.1f} GB would leave too little free space"
+    return None
+
+
 def refusal(details: Details, config: Config, snapshot: Snapshot) -> str | None:
     """Return why a torrent can't be added now, or None if it can."""
-    if details.license not in ALLOWED_LICENSES:
-        return f"its licence is {details.license or 'unknown'}"
-    if details.size is None:
-        return "its size is unknown"
-    if details.size > config.max_torrent:
-        return f"{details.size / GB:.1f} GB is over the limit per torrent"
-    if snapshot.total + details.size > config.max_total:
-        return f"{details.size / GB:.1f} GB would go over the limit for all of them"
-    if snapshot.free - snapshot.left - details.size < config.min_free:
-        return f"{details.size / GB:.1f} GB would leave too little free space"
-    return None
+    found = check_limits(details, config, snapshot)
+    return found[1] if found else None
+
+
+def describe_limits(kept_out: Counter[str], config: Config, snapshot: Snapshot) -> str:
+    """Say which checks kept models out, and where the share and this script's torrents stand against the limits."""
+    counts = ", ".join(f"{name} {count}" for name, count in kept_out.most_common())
+    return (
+        f"{counts}; {snapshot.total / GB:.1f} of {config.max_total / GB:.0f} GB for all of them, "
+        f"{snapshot.free / GB:.1f} GB free with {snapshot.left / GB:.1f} GB still to download, "
+        f"keeping {config.min_free / GB:.0f} GB free"
+    )
 
 
 def load_state(path: Path) -> dict[str, Any]:
@@ -839,18 +856,25 @@ class Watch:
         """Add what is at risk, smallest first, while the limits allow it."""
         models = self.at_risk_models()
         taken = {entry["repo"] for entry in self.state["done"].values() if entry.get("why") not in RETRY}
-        left_out = waiting = 0
+        kept_out: Counter[str] = Counter()
+        waiting = 0
         for model in list(models):
             if model["repo"] in taken:
                 continue
-            if refusal(Details(model["license"], model["size"]), self.config, snapshot):
-                left_out += 1
+            found = check_limits(Details(model["license"], model["size"]), self.config, snapshot)
+            if found:
+                kept_out[found[0]] += 1
             elif self.added >= MAX_ADDS_PER_POLL:
                 waiting += 1
             else:
                 snapshot = self.take_at_risk(model, snapshot)
+        left_out = kept_out.total()
         log.info(
-            "at risk: %d listed, %d kept out by the limits, %d waiting for a later poll", len(models), left_out, waiting
+            "at risk: %d listed, %d kept out by the limits, %d waiting for a later poll%s",
+            len(models),
+            left_out,
+            waiting,
+            f" ({describe_limits(kept_out, self.config, snapshot)})" if left_out else "",
         )
 
     def stop_if_short_of_space(self, snapshot: Snapshot) -> None:
