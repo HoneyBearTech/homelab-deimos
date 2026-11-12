@@ -30,7 +30,7 @@ agent) come from their own projects; this stack doesn't include or manage them.
 | Actor | Does |
 | --- | --- |
 | Maintainer | Merges pull requests (a merge deploys), tags releases, configures each service in its web UI |
-| Dependabot | Opens a pull request when an image (tag and digest), a check tool or an Action has a new version; patch, minor and major updates and image rebuilds are auto-merged once the checks pass, except Tdarr's |
+| Renovate | Opens pull requests for Compose images, Python requirements, GitHub Actions and audited helper images; every update is reviewed and merged by the maintainer |
 | CI | Lints, scans for secrets, tests the checker, resolves the Compose file, enforces the policy and smoke-tests the stack on amd64 (without a GPU) on every pull request |
 | Pull agent | On the maintainer's server, about every 90 seconds: fetches `main` and, when it moved, fast-forwards the checkout and runs `docker compose pull` and `docker compose up -d` (it lives in the maintainer's private orchestration repository); skips its run while a backup or restore holds its lock |
 | Release workflow | On a version tag: checks the policy, writes the SBOM, signs the checksums, publishes the GitHub Release |
@@ -87,12 +87,11 @@ backs it up.
 
 ## How changes reach the host
 
-1. Dependabot (or the maintainer) opens a pull request that changes an image's tag and digest.
+1. Renovate (or the maintainer) opens a pull request that changes an image's tag and digest.
 2. CI resolves the Compose file, runs the policy check and the smoke test; the maintainer reads the service's
    release notes.
-3. The pull request is squash-merged (automatically for Dependabot's patch, minor and major updates and image
-   rebuilds, once every check passes, except Tdarr's; by the maintainer, after a backup, for anything else that can
-   migrate data).
+3. The maintainer reviews and merges the pull request after considering release notes, compatibility and backup
+   readiness. Tdarr and qBittorrent image updates are prepared manually.
 4. Within about 90 seconds the pull agent on the host sees `main` move, fast-forwards its checkout and runs
    `docker compose pull && docker compose up -d --remove-orphans --wait`
    ([upgrading.md](upgrading.md#following-main)). A rollback is a revert pull request, deployed the same way.
@@ -116,4 +115,4 @@ only pulls; nothing connects in to it to deploy.
 | `scripts/smoke-test.sh` | Starts the stack in isolation, waits for health, and round-trips a backup |
 | `tests/` | The checker's tests, with JSON fixtures |
 | `docs/` | This documentation |
-| `.github/` | CI, release and security workflows, Dependabot, templates |
+| `.github/` | CI, release and security workflows, Renovate, templates |

@@ -98,7 +98,7 @@ jobs:
             python scripts/check_compose.py
 
   smoke:
-    # A required check on main, like "Checks + tests", so an image that doesn't start can't be auto-merged.
+    # A required check on main, like "Checks + tests", so a broken image update cannot pass CI.
     name: Stack smoke test
     # Amd64, like the server, so the images are tested for the platform they run on. GitHub's runners have no GPU,
     # so the stack must start without one (the GPU reservation lives outside compose.yaml).

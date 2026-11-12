@@ -11,7 +11,7 @@
 # CONFIG_ROOT/mealie/secrets, Spoolman's database password from one under CONFIG_ROOT/spoolman/secrets and
 # torrent-watch's qBittorrent password from one under CONFIG_ROOT/torrent-watch/secrets (Docker secrets, at the end).
 # Every image is
-# pinned as name:tag@sha256:<digest> and publishes linux/amd64; Dependabot proposes updates. scripts/check_compose.py
+# pinned as name:tag@sha256:<digest> and publishes linux/amd64; Renovate proposes updates. scripts/check_compose.py
 # enforces the policy (docs/security.md#policy).
 #
 # The GPU is not in this file: compose.gpu.yaml reserves it for Tdarr, and the host's .env adds that file with
@@ -41,7 +41,7 @@ services:
   tdarr:
     <<: *hardened
     # Server with its internal node. Every Tdarr update is merged by hand after reading its release notes (it rewrites
-    # the media library), so Dependabot's auto-merge skips it.
+    # the media library), so it is excluded from Renovate updates and reviewed by hand.
     image: ghcr.io/haveagitgat/tdarr:3.06.00@sha256:0880fd036a4ac6ef8a2fef2a7b8ddedf5d0898c9ee1a495580356dc922f54d62
     container_name: tdarr
     restart: unless-stopped
@@ -271,7 +271,7 @@ services:
     # only app in this stack that talks to it is torrent-watch.
     # linuxserver.io's version tag names qBittorrent and the libtorrent it is built on: 2.1, whose disk I/O reads and
     # writes files instead of mapping them into memory, which suits a network share (docs/dependencies.md#qbittorrent).
-    # Dependabot follows this tag's rebuilds but can't read it as a version: a new qBittorrent is bumped by hand.
+    # Keep this tag manual: Renovate must not parse its qBittorrent/libtorrent pair as ordinary semver.
     image: lscr.io/linuxserver/qbittorrent:version-5.3.0_v2.1.2@sha256:05c1454f9a32967affc1f34f67f8cc0cc57dd805dca45489fe797095a6286556
     container_name: qbittorrent-direct
     # Its init (s6-overlay) runs as root: it takes ownership of the data for PUID:PGID (CHOWN), runs the app as that

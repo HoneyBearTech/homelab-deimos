@@ -9,7 +9,7 @@
 #   tests with the coverage floor, the secret scan, the workflow lint and the Compose policy check (of compose.yaml
 #   alone and with compose.gpu.yaml, as on the host). The smoke test needs a daemon (Docker-in-Docker, so a
 #   privileged runner), and runs on GitHub only.
-# Images are pinned by tag and digest. Dependabot doesn't read this file: they're bumped by hand
+# Images are pinned by tag and digest. Renovate does not manage this mirrored GitLab CI file: its images are bumped by hand
 # (docs/dependencies.md).
 
 workflow:
