@@ -63,13 +63,13 @@ tag. Since HaspelSync 1.3 these only seed its settings: once a setting is saved 
 `/app/printers` owns it and the variable is ignored. Change them in `compose.yaml`, in a pull request, or in the web
 UI, whose settings the backups cover.
 
-Mealie uses PostgreSQL (`DB_ENGINE: postgres`) at the URL in its secret (`POSTGRES_URL_OVERRIDE_FILE`), never a
-SQLite file of its own, and takes new accounts only by an administrator's invitation (`ALLOW_SIGNUP: "false"`). It is
+Mealie uses PostgreSQL, selected by `DB_ENGINE`, at the URL in its secret (`POSTGRES_URL_OVERRIDE_FILE`), never a
+SQLite file of its own. `ALLOW_SIGNUP` restricts new accounts to an administrator's invitations. It is
 limited to 1000 MB of memory, as in Mealie's own example. Its other settings (e-mail, single sign-on, an AI provider)
 are Mealie's defaults until a pull request sets them ([Mealie's settings](https://mealie.io/documentation/getting-started/installation/backend-config/)).
 
-social-to-mealie keeps the yt-dlp built into its image (`YTDLP_VERSION: none`; by default it would install the newest
-one from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), and reaches Mealie inside the stack at
+social-to-mealie keeps the yt-dlp built into its image by leaving `YTDLP_VERSION` unset (otherwise it would install
+the newest version from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), and reaches Mealie inside the stack at
 `http://mealie:9000`; the recipe links it shows point at `MEALIE_PUBLIC_URL`.
 
 qBittorrent listens for peers on port 50881 (`TORRENTING_PORT`) and serves its web UI on port 8091 (`WEBUI_PORT`).
