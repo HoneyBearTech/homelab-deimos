@@ -28,9 +28,10 @@ its release notes.
 | --- | --- | --- | --- |
 | The stack's images | [`compose.yaml`](../compose.yaml) | version tag and digest | `docker compose pull` |
 | Check and test tools (pytest, coverage, ruff, yamllint, shellcheck) | [`requirements-dev.in`](../requirements-dev.in) → [`requirements-dev.txt`](../requirements-dev.txt) | exact version and SHA-256 hashes (`pip-compile --generate-hashes`) | `pip install --require-hashes --no-deps` |
-| Helper image for backups and the smoke test (busybox) | [`scripts/lib.sh`](../scripts/lib.sh) | version tag and digest | Docker |
-| The smoke test's stand-in for Mealie's database server (PostgreSQL, the version the homelab's database server runs) | [`scripts/smoke-stack.sh`](../scripts/smoke-stack.sh) | version tag and digest | Docker |
-| Linters and scanners used only by CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest | Docker |
+| Helper image for backups and the smoke test (busybox) | [`scripts/lib.sh`](../scripts/lib.sh) | version tag and digest; Renovate regex manager | Docker |
+| The smoke test's stand-in for Mealie's database server (PostgreSQL, the version the homelab's database server runs) | [`scripts/smoke-stack.sh`](../scripts/smoke-stack.sh) | version tag and digest; Renovate regex manager | Docker |
+| Linters and scanners used only by GitHub CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest; Renovate regex manager | Docker |
+| GitLab CI images | [`.gitlab-ci.yml`](../.gitlab-ci.yml) | version tag and digest; reviewed by hand | Docker |
 | GitHub Actions | [`.github/workflows/`](../.github/workflows/) | full commit SHA (version in a comment) | GitHub Actions |
 
 Each release will carry a CycloneDX SBOM listing every service's image and digest
@@ -38,26 +39,31 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 
 ## Tracking dependencies
 
-- **Dependabot** ([`.github/dependabot.yml`](../.github/dependabot.yml)) checks weekly for new image
-  versions in the Compose file, new tool versions and new Action versions, and opens a pull request for each.
-  Dependabot alerts and security updates are on.
-- The CI-only images in `run:` steps and the scripts' busybox and PostgreSQL images aren't seen by Dependabot;
-  they're bumped by hand at least every quarter (PostgreSQL along with the database server's).
+- **Renovate** ([`renovate.json`](../renovate.json)) checks every Monday before 6am Central for Compose images,
+  root Python requirements and GitHub Actions. Minor and patch updates are grouped into one pull request; major
+  updates remain separate and carry the `major` label. All update pull requests require manual review and merge.
+  CodeQL init, analyze and upload-sarif actions are grouped so they move to one shared version. The global label is
+  `dependencies`; vulnerability alert pull requests carry `security`, and OSV vulnerability alerts are enabled.
+- Narrow Renovate regex managers track the version and digest for busybox in `scripts/lib.sh`, the PostgreSQL
+  smoke-test image in `scripts/smoke-stack.sh`, and actionlint, gitleaks and Trivy in GitHub workflow `run:` commands.
+  GitLab CI images are pinned by version and digest but reviewed by hand. The Docker Hub `ubuntu` examples in
+  rebuilding/quick-start docs are illustrative commands, not project automation or deployed images.
+- **Tdarr and qBittorrent remain manual.** Renovate excludes both from image updates: Tdarr can rewrite the media
+  library, and the LinuxServer `version-<qBittorrent>_v<libtorrent>` tag must not be parsed as an ordinary semver
+  version. Read release notes and verify qBittorrent's libtorrent version before a manual change. The current
+  `name:tag@sha256:<digest>` policy remains in force for Compose images; do not refresh an existing pin just for
+  freshness. Any new pin needs upstream release/tag, official registry digest, `linux/amd64` manifest and consumer
+  compatibility evidence.
 - **Mealie's updates migrate a database outside this stack**, on its database server: keep nightly backups there,
-  since a merge of one, automatic or not, relies on them.
-- **Patch and minor updates merge automatically** (and majors, below) once every required check has passed (CI with the Compose
-  policy check and the smoke test, CodeQL, dependency review), **except Tdarr's**: any Tdarr update is merged by
-  hand, after reading its release notes, because a faulty Tdarr version can damage the media library.
-- **Image rebuilds merge automatically too**: a pull request that only moves an image to a new digest under the
-  same tag (a rebuild of the same app version, with newer base packages) and changes nothing else in `compose.yaml`.
-  Tdarr's rebuilds wait, like all its updates.
-- **Major updates merge automatically too** (owner's decision, 14 October 2026), so they reach the maintainer's
-  server unattended. A new major version can migrate its data one way: the nightly backup is the way back, since a
-  revert alone doesn't undo the migration ([upgrading.md](upgrading.md)). Tdarr's updates, and any update Dependabot
-  can't classify (such as a tag scheme it doesn't read as a version), are still merged by hand.
-- **A merge deploys.** The maintainer's server follows `main` with a pull agent, so every merge, the automatic
-  ones included, reaches it within about two minutes ([upgrading.md](upgrading.md#following-main)). Updates that
-  merge by hand get a backup first; the automatic ones rely on the nightly backup.
+  before any merge of one, since the change relies on them.
+- **Every update pull request is reviewed and merged by hand**, including image rebuilds and major updates. A major
+  update can migrate persistent data one way, so a revert alone might not undo it ([upgrading.md](upgrading.md)).
+  Back up before a merge that changes a service image or data format.
+- Dependabot alerts remain enabled. If Dependabot security-update pull requests remain enabled after this
+  version-update migration, they also require manual review and merge; no auto-merge workflow remains.
+- **A merge deploys.** The maintainer's server follows `main` with a pull agent, so a merge can reach the live host
+  within minutes ([upgrading.md](upgrading.md#following-main)). Major updates can migrate persistent data; review release notes,
+  migration guidance and backup readiness before merging.
 - **Dependency review** blocks a pull request that adds or changes a Python or Actions dependency with a known
   vulnerability of moderate severity or higher, or a license outside the allowlist.
 - **Nothing on the host updates from a registry.** Auto-updaters such as Watchtower are not used: they would run
@@ -68,12 +74,11 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 Two things about qBittorrent differ from the other images:
 
 - **Its `version-` tag names the libtorrent too**: `version-5.3.0_v2.1.2` is qBittorrent 5.3.0 built on libtorrent
-  2.1.2, pointing at the newest build of exactly that pair. Dependabot can't read that as a version (its tag parser
-  stops at the `_v`), so it proposes only rebuilds of the pinned tag, which merge by themselves like other images'
-  rebuilds and always keep libtorrent 2.1.2. A new qBittorrent version is a pull request by hand: read its release
+  2.1.2, pointing at the newest build of exactly that pair. Renovate does not update this image: its tag format must
+  stay manual and must never be treated as ordinary semver. A new qBittorrent version is a hand-edited change: read its release
   notes (a new minor version can migrate the settings one way), check which libtorrent the build uses, and back up
-  first. The tags Dependabot could follow are worse here: the plain version and `latest` move to whichever libtorrent
-  linuxserver.io builds next, so a rebuild under one of them could change the libtorrent unattended.
+  first. The plain version and `latest` move to whichever libtorrent linuxserver.io builds next, so a change to one
+  could alter the libtorrent version unexpectedly.
 - **libtorrent 2.1 or newer, never memory-mapped files.** libtorrent 2.0 maps every file it reads or writes into
   memory, which suits a network share badly: the share's page cache shows up as qBittorrent's memory, and every page
   fault waits on the network. libtorrent 2.1 reads and writes the files from a pool of threads, and that is what
@@ -82,11 +87,11 @@ Two things about qBittorrent differ from the other images:
 
 ## Policy for vulnerabilities in dependencies
 
-Known vulnerabilities are found through Dependabot alerts, the services' and images' own advisories, and a
+Known vulnerabilities are found through Dependabot alerts (kept enabled), Renovate OSV vulnerability alerts, the services' and images' own advisories, and a
 weekly scan of the pinned digests (Trivy, HIGH and CRITICAL findings that have a fix, for `linux/amd64`,
 reported to code scanning). Each finding is triaged within 14 days:
 
-1. **If a fixed version exists**, bump to it (a Dependabot pull request usually already does) and release.
+1. **If a fixed version exists**, bump to it (a Renovate pull request may already identify it) and release.
    A fix for an exploitable critical or high-severity vulnerability goes out in a patch release within 30
    days; others go out with the next release.
 2. **If upstream hasn't released a fix**, assess whether it's reachable in this stack (which ports are

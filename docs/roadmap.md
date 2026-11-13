@@ -12,7 +12,7 @@ file changes with them, in the same pull request.
   It first ran release 0.1.0; since 0.3.0 it follows `main` with a pull agent, so a merge deploys
   ([upgrading.md](upgrading.md#following-main)).
 - The images brought up to their current releases, one service at a time: Spoolman and the AMS app (under its new
-  image name, HaspelSync) in 0.2.0, Tdarr by hand in 0.2.1. Dependabot keeps them current since.
+  image name, HaspelSync) in 0.2.0, Tdarr by hand in 0.2.1. Renovate proposes reviewed updates since.
 - Scheduled backups copied off the host (`scripts/scheduled-backup.sh`, a systemd timer), reported to Uptime Kuma.
 - Tighter container settings (0.3.0): every service drops all capabilities and adds back only what its image needs,
   can't gain privileges, and runs with a read-only root filesystem where the image allows it (all but Tdarr); the AMS
