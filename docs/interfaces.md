@@ -68,7 +68,7 @@ SQLite file of its own. `ALLOW_SIGNUP` restricts new accounts to an administrato
 limited to 1000 MB of memory, as in Mealie's own example. Its other settings (e-mail, single sign-on, an AI provider)
 are Mealie's defaults until a pull request sets them ([Mealie's settings](https://mealie.io/documentation/getting-started/installation/backend-config/)).
 
-social-to-mealie keeps the yt-dlp built into its image by leaving `YTDLP_VERSION` unset (otherwise it would install
+social-to-mealie keeps the yt-dlp built into its image by configuring `YTDLP_VERSION` to use the image’s bundled version (otherwise it would install
 the newest version from PyPI at each start), uses OpenAI's API (`https://api.openai.com/v1`), and reaches Mealie inside the stack at
 `http://mealie:9000`; the recipe links it shows point at `MEALIE_PUBLIC_URL`.
 
