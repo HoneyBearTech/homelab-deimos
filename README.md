@@ -19,7 +19,7 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 - [Installing](docs/installing.md): host preparation (including the NVIDIA runtime), where data lives, running it securely, uninstalling
 - [Upgrading](docs/upgrading.md): moving to a new release, backup and restore, rolling back
 - [Rebuilding](docs/rebuilding.md): a new or wiped host, from a backup
-- [Architecture](docs/architecture.md): the services, actors, data flow and how updates reach the host
+- [Architecture and repository layout](docs/architecture.md): the services, actors, data flow, repository layout and how updates reach the host
 - [Interfaces](docs/interfaces.md): every setting, port, volume, label and command
 - [Verifying releases](docs/verifying-releases.md): checking signatures, checksums, provenance and the SBOM
 - [Security requirements](docs/security.md): what the stack protects, what it doesn't, where secrets live
@@ -76,8 +76,8 @@ Mealie the URL of its database ([installing](docs/installing.md#mealies-database
 created ([installing](docs/installing.md#torrent-watch)).
 
 For Tdarr to use the GPU, the host needs the NVIDIA driver, the NVIDIA Container Toolkit 1.18+ and Docker Engine
-29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs
-`COMPOSE_FILE=compose.yaml:compose.gpu.yaml` ([installing](docs/installing.md#the-gpu-and-docker-292)). The full
+29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs `COMPOSE_FILE` set to include
+the GPU override ([installing](docs/installing.md#the-gpu-and-docker-292)). The full
 steps are in the [quick start](docs/quick-start.md).
 
 ## Usage
@@ -101,19 +101,19 @@ Upgrading to a new release, or following `main` the way the maintainer's server 
 
 Settings come from `.env` (template [`.env.example`](.env.example)), which holds no secrets.
 
-| Setting | Default in `.env.example` | Meaning |
-| --- | --- | --- |
-| `TZ` | `Etc/UTC` | Time zone |
-| `COMPOSE_FILE` | (commented out) | `compose.yaml:compose.gpu.yaml` on a host with an NVIDIA GPU |
-| `PUID`, `PGID` | `1000` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH` |
-| `MEDIA_PATH` | `/srv/media` | The media library Tdarr processes (never backed up by this stack) |
-| `TORRENTS_PATH` | `/srv/torrents` | The folder qBittorrent keeps its torrents' files in, the only files it can reach (never backed up by this stack) |
-| `CONFIG_ROOT` | `/srv/config` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |
-| `SPOOLMAN_PUBLIC_URL` | `http://spoolman.example.com:7912` | The URL browsers reach Spoolman at (the AMS app's links) |
-| `MEALIE_PUBLIC_URL` | `http://mealie.example.com:9925` | The URL browsers reach Mealie at (its links in notifications and shared recipes) |
-| `TORRENT_WATCH_INDEX_URL`, `TORRENT_WATCH_TERMS` | `https://index.example.com`, empty | The model index torrent-watch reads (https only), and what to watch; with no terms it does nothing |
-| `TORRENT_WATCH_MAX_TORRENT_GB`, `TORRENT_WATCH_MAX_TOTAL_GB`, `TORRENT_WATCH_MIN_FREE_GB` | `100`, `500`, `500` | The largest torrent it adds, the most its category holds, and the free space it keeps on the disk |
-| `TORRENT_WATCH_QBITTORRENT_USERNAME` | `admin` | The qBittorrent user it signs in as |
+| Setting | Meaning |
+| --- | --- |
+| `TZ` | Time zone |
+| `COMPOSE_FILE` | Includes the GPU override on a host with an NVIDIA GPU |
+| `PUID`, `PGID` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH` |
+| `MEDIA_PATH` | The media library Tdarr processes (never backed up by this stack) |
+| `TORRENTS_PATH` | The folder qBittorrent keeps its torrents' files in, the only files it can reach (never backed up by this stack) |
+| `CONFIG_ROOT` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |
+| `SPOOLMAN_PUBLIC_URL` | The URL browsers reach Spoolman at (the AMS app's links) |
+| `MEALIE_PUBLIC_URL` | The URL browsers reach Mealie at (its links in notifications and shared recipes) |
+| `TORRENT_WATCH_INDEX_URL`, `TORRENT_WATCH_TERMS`, `TORRENT_WATCH_AT_RISK` | The model index torrent-watch reads (HTTPS only), what to watch, and whether to also add items the index counts as at risk; with no terms and at-risk disabled it does nothing |
+| `TORRENT_WATCH_MAX_TORRENT_GB`, `TORRENT_WATCH_MAX_TOTAL_GB`, `TORRENT_WATCH_MIN_FREE_GB` | The largest torrent it adds, the maximum its category holds, and the minimum free space it keeps on the disk |
+| `TORRENT_WATCH_QBITTORRENT_USERNAME` | The qBittorrent user it signs in as |
 
 Mealie's database URL, with its password, is a file under `CONFIG_ROOT/mealie/secrets`, never a setting
 ([installing](docs/installing.md#mealies-database)); so is Spoolman's database password, under

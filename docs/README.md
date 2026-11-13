@@ -8,7 +8,7 @@ Start with the [README](../README.md) for what homelab-deimos is and how to run 
 | [Installing](installing.md) | Host preparation (including the NVIDIA runtime), directory layout, running it securely, uninstalling |
 | [Upgrading](upgrading.md) | Moving to a new release, backing up the services' data first, and rolling back |
 | [Rebuilding](rebuilding.md) | Bringing the stack back on a new or wiped host from a backup |
-| [Architecture](architecture.md) | The services, who talks to whom, and how updates flow from Renovate to the host |
+| [Architecture and repository layout](architecture.md) | The services, repository layout, who talks to whom, and how updates flow from Renovate to the host |
 | [Interfaces](interfaces.md) | Every setting, port, volume, label and command |
 | [Verifying releases](verifying-releases.md) | Checking that release files came from this repository, unchanged |
 | [Security requirements](security.md) | What the stack protects, what it doesn't, and where secrets live |
@@ -21,5 +21,5 @@ Project policies live at the top of the repository: [CONTRIBUTING.md](../CONTRIB
 [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) and [CHANGELOG.md](../CHANGELOG.md).
 
 These documents change in the same pull request as the behaviour they describe. Anything not built yet is
-marked **Planned**; for now that is a rehearsed rebuild. If you find a document that's wrong, please
+marked **Planned**; the rebuild rehearsal is planned. If you find a document that's wrong, please
 [open an issue](https://github.com/HoneyBearTech/homelab-deimos/issues): it's treated as a bug.
