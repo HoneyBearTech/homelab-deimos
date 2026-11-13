@@ -22,7 +22,8 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-# shellcheck source=scripts/lib.sh
+# The dynamic runtime library is linted separately.
+# shellcheck source=/dev/null
 . "$root/scripts/lib.sh"
 cd "$root"
 name_re='^[0-9]{8}-[0-9]{6}$'
