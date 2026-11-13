@@ -11,7 +11,7 @@ The [quick start](quick-start.md) is the short version of this page.
 - For hardware transcoding: an **NVIDIA GPU** (passed through to the VM if the host is virtual), the NVIDIA
   driver, and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
   1.18 or later configured for Docker (`sudo nvidia-ctk runtime configure --runtime=docker`, then restart Docker), and
-  `COMPOSE_FILE=compose.yaml:compose.gpu.yaml` in `.env`. Without a GPU, leave that line out: Tdarr still runs
+  configure `COMPOSE_FILE` in `.env` to include the GPU override. Without a GPU, leave it unset: Tdarr still runs
   and transcodes on the CPU.
 - A user in the `docker` group to run `docker compose`. Membership is equivalent to root on the host, so keep
   that group small.
@@ -190,8 +190,8 @@ doesn't start while the file is missing.
    encrypts the connection; `verify-full` would also check the server's certificate, which needs its CA certificate
    inside the container.
 3. **Start it**: `docker compose up -d mealie`. On its first start Mealie makes its tables, and its first account:
-   open `MEALIE_PUBLIC_URL`, sign in as `changeme@example.com` with the password `MyPassword`, and change both at
-   once (Mealie makes that account only while the database has no users).
+   open `MEALIE_PUBLIC_URL`, complete first-run setup, then change the initial email and password to private values
+   (Mealie makes its initial account only while the database has no users).
 
 The file is never in the stack's backups (`scripts/backup.sh` copies read-write mounts only), and the database is
 backed up on its server, not here. To give the login a new password (`ALTER ROLE mealie PASSWORD '…'` on the
@@ -331,7 +331,7 @@ you've set one ([above](#qbittorrent)), so that is what leaves room for everythi
 3. **Read its log**: `docker compose logs torrent-watch`. A new term says how many torrents it already matches, and
    each torrent it adds or leaves out gets a line.
 
-**To take what is at risk**, set `TORRENT_WATCH_AT_RISK=true`, with or without watch terms. At risk is the index's own
+**To take what is at risk**, enable `TORRENT_WATCH_AT_RISK`, with or without watch terms. At risk is the index's own
 word: a torrent with no observed seeders whose source is still available. What is at risk now is the point, so nothing
 is only recorded first, and it takes the smallest first, to save the most torrents per GB. The rules above still hold, so
 expect it to stop at your limits long before it runs out of torrents: the list can come to many terabytes. It asks for
@@ -415,8 +415,8 @@ protect it with snapshots where it is stored.
    other recovery secrets, such as a password manager, and never copy it to this host: without it no encrypted
    backup off the host can be read, and with it any of them can.
 4. **Settings**: `cp backup.env.example backup.env && chmod 600 backup.env`, then set
-   `BACKUP_REMOTE=backup-host:/volume1/<folder>`, `BACKUP_AGE_RECIPIENT=age1...` (the public key from step 3; leave
-   it empty to copy the backups as they are) and, optionally, the retention and `BACKUP_PING_URL`. For the ping, add
+   `BACKUP_REMOTE` (an SSH destination), `BACKUP_AGE_RECIPIENT` (the public key from step 3; unset it to copy the
+   backups as they are) and, optionally, the retention setting and `BACKUP_PING_URL`. For the ping, add
    a monitor of type **Push** in Uptime Kuma with a heartbeat interval of 25 hours, and copy its URL.
 5. **Try it**: `scripts/scheduled-backup.sh`. Each service stops only while its own data is copied (compression
    runs after it starts again): Spoolman, the AMS app and Mealie for seconds, Tdarr for as long as its database takes to
