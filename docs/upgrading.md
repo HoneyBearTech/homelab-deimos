@@ -79,10 +79,10 @@ review and merge ([dependencies.md](dependencies.md#tracking-dependencies)).
 - The agent only fast-forwards: it refuses a checkout with local changes or a `main` whose history was rewritten.
   If the configuration doesn't resolve or an image can't be pulled, it moves the checkout back, so the server keeps
   running what it ran.
-- **The merge is the upgrade.** Before merging an update that can migrate a service's data, read the release notes
-  and take a backup on the server (`scripts/backup.sh`). The updates that merge by themselves (patch, minor and
-  major ones, and image rebuilds; never Tdarr's) rely on the nightly
-  [scheduled backup](installing.md#scheduled-backups).
+- **The merge is the upgrade.** Every update pull request, including patch, minor and major updates and image
+  rebuilds, requires review and manual merge by the maintainer. Before merging, read the release notes and check
+  backup readiness; take a backup on the server (`scripts/backup.sh`) before an update that changes a service image
+  or data format ([dependencies.md](dependencies.md#tracking-dependencies)).
 - **Backups and restores never overlap a deploy**: they take the agent's lock first ([Backing up](#backing-up)), so a
   merge that lands during the nightly backup deploys a few minutes after it, not halfway through.
 - **Rolling back** is a revert pull request, deployed the same way. If the service already migrated its data,
