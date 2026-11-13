@@ -72,7 +72,7 @@ The workflow and secret scanners run in containers; the exact commands are in
 
 ## Coding standards
 
-- **Compose** (`compose.yaml`): every image pinned as `name:tag@sha256:<digest>` (Dependabot updates both);
+- **Compose** (`compose.yaml`): every image pinned as `name:tag@sha256:<digest>` (Renovate updates both);
   settings from `.env` through `${VAR}`; every service `<<: *hardened` (`cap_drop: [ALL]`, `no-new-privileges`),
   adding back only capabilities from Docker's default set with a comment saying why; no `privileged`,
   capabilities beyond Docker's defaults, host network or PID namespace,

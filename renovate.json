@@ -1,0 +1,72 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "enabledManagers": ["docker-compose", "pip_requirements", "github-actions", "custom.regex"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "America/Chicago",
+  "labels": ["dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": ["security"]
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "minor and patch dependencies"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "addLabels": ["major"]
+    },
+    {
+      "matchPackageNames": ["github/codeql-action*"],
+      "groupName": "GitHub CodeQL actions"
+    },
+    {
+      "matchPackageNames": ["ghcr.io/haveagitgat/tdarr", "lscr.io/linuxserver/qbittorrent"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/scripts/lib.sh/"],
+      "matchStrings": ["(?m)^busybox=(?<depName>busybox):(?<currentValue>[^@\\s]+)@sha256:[a-f0-9]{64}$"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "busybox",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/scripts/smoke-stack.sh/"],
+      "matchStrings": ["(?m)^mealie_db_image=(?<depName>postgres):(?<currentValue>[^@\\s]+)@sha256:[a-f0-9]{64}$"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "postgres",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/.github/workflows/ci.yml/"],
+      "matchStrings": ["(?<depName>rhysd/actionlint):(?<currentValue>[^@\\s]+)@sha256:[a-f0-9]{64}"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "rhysd/actionlint",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/.github/workflows/ci.yml/"],
+      "matchStrings": ["(?<depName>ghcr\\.io/gitleaks/gitleaks):(?<currentValue>[^@\\s]+)@sha256:[a-f0-9]{64}"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "ghcr.io/gitleaks/gitleaks",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/.github/workflows/scan.yml/"],
+      "matchStrings": ["(?<depName>aquasec/trivy):(?<currentValue>[^@\\s]+)@sha256:[a-f0-9]{64}"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "aquasec/trivy",
+      "versioningTemplate": "docker"
+    }
+  ]
+}

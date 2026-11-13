@@ -67,7 +67,7 @@ data or the media library's storage.
 | CWE-250 (unnecessary privileges) | Container settings, GPU access | Policy rules `privileged`, `no-new-privileges`, `cap-drop`, `cap-add`, `host-*`, `docker-socket`, `devices`; GPU by reservation; read-only root filesystems where the images allow it |
 | CWE-306 (missing authentication for critical function) | Web UIs without a login | LAN only, behind access lists; logins on where offered |
 | CWE-22 (path traversal) | Restoring a backup | `restore.sh` validates archive names and mount paths from the checksummed `MANIFEST` |
-| CWE-1104 (unmaintained third-party components) | Images, tools, Actions | Dependabot weekly; image scan; triage SLAs ([dependencies.md](dependencies.md)) |
+| CWE-1104 (unmaintained third-party components) | Images, tools, Actions | Renovate weekly; image scan; triage SLAs ([dependencies.md](dependencies.md)) |
 | CWE-77/78 (injection) | Workflows, scripts | Untrusted values only via `env:`; actionlint and shellcheck; CodeQL for Actions |
 | CWE-20 (improper input validation) | The checker's input | It reads JSON only with the standard library, never evaluates it, and exits 2 on anything that isn't a JSON object |
 
