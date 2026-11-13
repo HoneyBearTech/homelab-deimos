@@ -1,0 +1,46 @@
+exclude: '^\.agent/'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '^(README(?:\.[^/]*)?|docs/)'
+      - id: end-of-file-fixer
+        exclude: '^(README(?:\.[^/]*)?|docs/)'
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-added-large-files
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: fb5d707e08fe0d2578b155458fdd53b6782dcab2 # v8.29.1 peeled commit
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/adrienverge/yamllint
+    rev: 79a6b2b1392eaf49cdd32ac4f14be1a809bbd8f7 # v1.37.1
+    hooks:
+      - id: yamllint
+        args: [--strict, -c, .yamllint.yml]
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: 2491238703a5d3415bb2b7ff11388bf775372f29 # v0.10.0
+    hooks:
+      - id: shellcheck
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: f9351c924055bf6c7b4a4670237d3ce141e9f57c # v0.14.0
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+  - repo: https://github.com/ansible/ansible-lint
+    rev: fac2489f3e4ccffa83a40b839770abbf4ab52327 # v26.10.0
+    hooks:
+      - id: ansible-lint
+        files: '^(ansible|playbooks|roles)/.*\.ya?ml$'
+        always_run: false
+  - repo: https://github.com/hadolint/hadolint
+    rev: 2eece55955ced00200be9729e9728cb7dacca505 # v2.15.1
+    hooks:
+      - id: hadolint-docker
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: cbcdc463be5464e25e3e955a511599a67b9b987f # v0.50.0
+    hooks:
+      - id: markdownlint
+        files: '^(?!README(?:\.[^/]*)?$)(?!docs/).*\.md$'

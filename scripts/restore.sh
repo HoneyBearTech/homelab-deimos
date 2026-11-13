@@ -45,7 +45,9 @@ cd "$root"
 # Before anything stops: no deploy by the pull agent runs while services are stopped or their data is replaced.
 deploy_lock
 
-[ -f "$backup/MANIFEST" ] && [ -f "$backup/SHA256SUMS" ] || fail "$backup has no MANIFEST or SHA256SUMS"
+if [ ! -f "$backup/MANIFEST" ] || [ ! -f "$backup/SHA256SUMS" ]; then
+  fail "$backup has no MANIFEST or SHA256SUMS"
+fi
 echo "Verifying $backup/SHA256SUMS"
 (cd "$backup" && sha256 -c --quiet SHA256SUMS)
 grep -q ' MANIFEST$' "$backup/SHA256SUMS" || fail "SHA256SUMS doesn't cover the MANIFEST"

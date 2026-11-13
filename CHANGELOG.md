@@ -8,349 +8,500 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Upgrading
 
-- **For torrent-watch, write qBittorrent's password to a file and create its folder before deploying this**
-  ([docs/installing.md](docs/installing.md#torrent-watch)). Without the file, its container can't be created. Its
-  settings in `.env` are all optional: with no `TORRENT_WATCH_TERMS` it does nothing.
-- **For qBittorrent, set `TORRENTS_PATH` in `.env` and create its folders before deploying this**, as your user:
-  `. ./.env && mkdir -p "$TORRENTS_PATH" "$CONFIG_ROOT/qbittorrent-direct/config"`. `TORRENTS_PATH` is a new required
-  setting: without it Compose stops with an error naming it, and nothing deploys. After the deploy, set its password
-  and check the address it uses ([docs/installing.md](docs/installing.md#qbittorrent)). Port 8091 must be free on the
-  LAN, and 50881 is the one port to forward from the router.
-- **For social-to-mealie, create `social-to-mealie.env` before deploying this**
-  ([docs/installing.md](docs/installing.md#social-to-mealie)): an OpenAI API key (with a spending limit), a Mealie API
-  token of a user of its own (not an administrator), and the two models. Without it the stack deploys and
-  social-to-mealie starts, but every import fails. Keep port 9926 on the LAN: it has no login.
-- **Create Spoolman's password file before deploying this**, as your user: `install -d -m 700
-  "$CONFIG_ROOT/spoolman/secrets" && install -m 600 /dev/null "$CONFIG_ROOT/spoolman/secrets/db_password"` (empty
-  keeps SQLite). Without it, Spoolman's container can't be created
-  ([docs/installing.md](docs/installing.md#spoolmans-database)).
-- **Give Mealie its database, and set `MEALIE_PUBLIC_URL` in `.env`, before deploying this**
-  ([docs/installing.md](docs/installing.md#mealies-database)): a PostgreSQL login that owns one new database on your
-  database server, its URL in `CONFIG_ROOT/mealie/secrets/database_url` (owned by `PUID:PGID`, mode `600`), and
-  `mkdir -p "$CONFIG_ROOT/mealie/config"` as your user. Without `MEALIE_PUBLIC_URL` a deploy stops at
-  `docker compose config` and changes nothing; without the file, Mealie's container can't be created. Then sign in
-  with Mealie's first account (`changeme@example.com`, `MyPassword`) and change both at once.
-- **Put the Dozzle certificate and key in `CONFIG_ROOT/dozzle/certs` before deploying this** (owned by root; the
-  same pair on the Dozzle hub, which needs its own update: [docs/installing.md](docs/installing.md#dozzles-certificate)).
-  Without them the Dozzle agent doesn't start. Once the agent has its pair, the hub reaches it only after it has
-  the same one, so switch the agents and the hub one right after the other.
-- **Add `CONFIG_ROOT` to `.env` and move each app's data into its folder under it before deploying this** (see
-  `.env.example`; never a folder inside `/var/lib/docker/volumes`). A deploy without `CONFIG_ROOT` stops at
-  `docker compose config` and changes nothing. Stop the stack (`docker compose stop`) and leave it stopped until
-  this is deployed (what an app writes to the old folder after the move is lost), then move:
-
-  | App | Old location (setting in `.env`) | New folder |
-  | --- | --- | --- |
-  | Tdarr | `TDARR_SERVER_PATH` | `CONFIG_ROOT/tdarr/server` |
-  | Tdarr | `TDARR_CONFIGS_PATH` | `CONFIG_ROOT/tdarr/config` |
-  | Tdarr | `TDARR_LOGS_PATH` | `CONFIG_ROOT/tdarr/logs` |
-  | Tdarr | `TDARR_CACHE_PATH` (the transcode cache) | `CONFIG_ROOT/tdarr/transcode` |
-  | Spoolman | `SPOOLMAN_DATA_PATH` | `CONFIG_ROOT/spoolman/config` |
-  | AMS app | `AMS_PRINTERS_PATH` | `CONFIG_ROOT/haspelsync/config` |
-  | AMS app | `AMS_LOGS_PATH` | `CONFIG_ROOT/haspelsync/logs` |
-
-  Keep the files' owners (`cp -a` or `mv`; Spoolman's and the AMS app's must be `PUID:PGID`, as they run as that
-  user). The logs and the transcode cache can start empty instead (create the folders, owned by `PUID:PGID`); empty
-  the cache only while Tdarr has no transcode in progress. For Tdarr's settings, for example:
+- **For torrent-watch, write qBittorrent's password to a file and create its
+  folder before deploying this**
+  ([docs/installing.md](docs/installing.md#torrent-watch)). Without the file,
+  its container can't be created. Its settings in `.env` are all optional: with
+  no `TORRENT_WATCH_TERMS` it does nothing.
+- **For qBittorrent, set `TORRENTS_PATH` in `.env` and create its folders before
+  deploying this**, as your user:
 
   ```sh
-  . ./.env && mkdir -p "$CONFIG_ROOT/tdarr" && sudo cp -a "$TDARR_CONFIGS_PATH" "$CONFIG_ROOT/tdarr/config"
+  . ./.env && mkdir -p "$TORRENTS_PATH" \
+    "$CONFIG_ROOT/qbittorrent-direct/config"
   ```
 
-  Then drop the seven old settings from `.env` (they're no longer read), and remove the old folders once the stack
-  runs from `CONFIG_ROOT`. Backups taken before this restore as they are: `scripts/restore.sh` puts each archive
-  into the folder the service mounts at that container path now.
+  `TORRENTS_PATH` is a new required setting: without it Compose stops with an
+  error naming it, and nothing deploys. After the deploy, set its password and
+  check the address it uses
+  ([docs/installing.md](docs/installing.md#qbittorrent)). Port 8091 must be free
+  on the LAN, and 50881 is the one port to forward from the router.
+- **For social-to-mealie, create `social-to-mealie.env` before deploying this**
+  ([docs/installing.md](docs/installing.md#social-to-mealie)): an OpenAI API key
+  (with a spending limit), a Mealie API token of a user of its own (not an
+  administrator), and the two models. Without it the stack deploys and
+  social-to-mealie starts, but every import fails. Keep port 9926 on the LAN: it
+  has no login.
+- **Create Spoolman's password file before deploying this**, as your user:
+
+  ```sh
+  install -d -m 700 "$CONFIG_ROOT/spoolman/secrets" && \
+    install -m 600 /dev/null "$CONFIG_ROOT/spoolman/secrets/db_password"
+  ```
+
+  (empty keeps SQLite). Without it, Spoolman's container can't be created
+  ([docs/installing.md](docs/installing.md#spoolmans-database)).
+- **Give Mealie its database, and set `MEALIE_PUBLIC_URL` in `.env`, before
+  deploying this** ([docs/installing.md](docs/installing.md#mealies-database)):
+  a PostgreSQL login that owns one new database on your database server, its URL
+  in `CONFIG_ROOT/mealie/secrets/database_url` (owned by `PUID:PGID`, mode
+  `600`), and `mkdir -p "$CONFIG_ROOT/mealie/config"` as your user. Without
+  `MEALIE_PUBLIC_URL` a deploy stops at `docker compose config` and changes
+  nothing; without the file, Mealie's container can't be created. Then sign in
+  with Mealie's first account (`changeme@example.com`, `MyPassword`) and change
+  both at once.
+- **Put the Dozzle certificate and key in `CONFIG_ROOT/dozzle/certs` before
+  deploying this** (owned by root; the same pair on the Dozzle hub, which needs
+  its own update: [docs/installing.md](docs/installing.md#dozzles-certificate)).
+  Without them the Dozzle agent doesn't start. Once the agent has its pair, the
+  hub reaches it only after it has the same one, so switch the agents and the
+  hub one right after the other.
+- **Add `CONFIG_ROOT` to `.env` and move each app's data into its folder under
+  it before deploying this** (see `.env.example`; never a folder inside
+  `/var/lib/docker/volumes`). A deploy without `CONFIG_ROOT` stops at
+  `docker compose config` and changes nothing. Stop the stack
+  (`docker compose stop`) and leave it stopped until this is deployed (what an
+  app writes to the old folder after the move is lost), then move:
+
+  - App: Tdarr
+    - Old location (setting in `.env`): `TDARR_SERVER_PATH`
+    - New folder: `CONFIG_ROOT/tdarr/server`
+  - App: Tdarr
+    - Old location (setting in `.env`): `TDARR_CONFIGS_PATH`
+    - New folder: `CONFIG_ROOT/tdarr/config`
+  - App: Tdarr
+    - Old location (setting in `.env`): `TDARR_LOGS_PATH`
+    - New folder: `CONFIG_ROOT/tdarr/logs`
+  - App: Tdarr
+    - Old location (setting in `.env`): `TDARR_CACHE_PATH` (the transcode
+      cache)
+    - New folder: `CONFIG_ROOT/tdarr/transcode`
+  - App: Spoolman
+    - Old location (setting in `.env`): `SPOOLMAN_DATA_PATH`
+    - New folder: `CONFIG_ROOT/spoolman/config`
+  - App: AMS app
+    - Old location (setting in `.env`): `AMS_PRINTERS_PATH`
+    - New folder: `CONFIG_ROOT/haspelsync/config`
+  - App: AMS app
+    - Old location (setting in `.env`): `AMS_LOGS_PATH`
+    - New folder: `CONFIG_ROOT/haspelsync/logs`
+
+  Keep the files' owners (`cp -a` or `mv`; Spoolman's and the AMS app's must be
+  `PUID:PGID`, as they run as that user). The logs and the transcode cache can
+  start empty instead (create the folders, owned by `PUID:PGID`); empty the
+  cache only while Tdarr has no transcode in progress. For Tdarr's settings, for
+  example:
+
+  ```sh
+  . ./.env && mkdir -p "$CONFIG_ROOT/tdarr" && \
+    sudo cp -a "$TDARR_CONFIGS_PATH" "$CONFIG_ROOT/tdarr/config"
+  ```
+
+  Then drop the seven old settings from `.env` (they're no longer read), and
+  remove the old folders once the stack runs from `CONFIG_ROOT`. Backups taken
+  before this restore as they are: `scripts/restore.sh` puts each archive into
+  the folder the service mounts at that container path now.
 
 ### Changed
 
-- The smoke test runs a stack's own steps from `scripts/smoke-stack.sh` when that exists (`smoke_prepare` before the
-  services start, `smoke_check` once they are healthy and again after the restore), gives a `*_SUBNET` setting a free
-  address range, and leaves a service with Docker secrets out of the restore's "recreated with older settings" check.
-  The Dozzle agent's and Mealie's steps use them; the rest keep the stacks' tooling the same.
-- Docs: a GPU host needs **Docker Engine 29.2 or later** and NVIDIA Container Toolkit 1.18 or later
-  ([docs/installing.md](docs/installing.md#the-gpu-and-docker-292)). From 29.2 Docker serves `compose.gpu.yaml`'s
-  `driver: nvidia` reservation through CDI (the toolkit's `nvidia-cdi-hook`, with `nvidia-cdi-refresh` keeping the
-  spec current). On an older Engine it uses NVIDIA's runtime hook, and Tdarr loses the GPU at every
-  `systemctl daemon-reload` (apt and unattended-upgrades run one): `nvidia-smi` in the container fails with "Failed
-  to initialize NVML: Unknown Error" (NVIDIA container-toolkit issue #48). The docs give a check
-  (`sudo systemctl daemon-reload`, then `docker exec tdarr nvidia-smi -L`). The compose files are unchanged apart
-  from a comment.
-- Each app's data moves to one folder per app under the new required setting `CONFIG_ROOT`: its settings and
-  database in `CONFIG_ROOT/<app>/config`, any other folder it needs beside that (`CONFIG_ROOT/tdarr/server`,
-  `tdarr/logs`, `tdarr/transcode`, `haspelsync/logs`), the same layout as every homelab stack (the maintainer's
-  decision, 2026-10-15). `CONFIG_ROOT` replaces `TDARR_SERVER_PATH`, `TDARR_CONFIGS_PATH`, `TDARR_LOGS_PATH`,
-  `TDARR_CACHE_PATH`, `SPOOLMAN_DATA_PATH`, `AMS_PRINTERS_PATH` and `AMS_LOGS_PATH`; the container paths and
-  `MEDIA_PATH` stay the same. `scripts/restore.sh` writes each archive to what the service mounts at that container
-  path now, recreating a container made from an older `compose.yaml` first and creating a missing folder, so a backup
-  of the old folders restores into the new ones ([docs/installing.md](docs/installing.md#where-data-lives)).
-- Docs: a warning never to point a path setting into `/var/lib/docker/volumes` or keep app data in named Docker
-  volumes: `docker volume prune`, `docker system prune --volumes` and Portainer's "remove unused volumes" delete any
-  volume no container mounts as a volume, including one whose `_data` folder a service bind-mounts
+- The smoke test runs a stack's own steps from `scripts/smoke-stack.sh` when
+  that exists (`smoke_prepare` before the services start, `smoke_check` once
+  they are healthy and again after the restore), gives a `*_SUBNET` setting a
+  free address range, and leaves a service with Docker secrets out of the
+  restore's "recreated with older settings" check. The Dozzle agent's and
+  Mealie's steps use them; the rest keep the stacks' tooling the same.
+- Docs: a GPU host needs **Docker Engine 29.2 or later** and NVIDIA Container
+  Toolkit 1.18 or later ([docs/installing.md][link-1]). From 29.2 Docker serves
+  `compose.gpu.yaml`'s `driver: nvidia` reservation through CDI (the toolkit's
+  `nvidia-cdi-hook`, with `nvidia-cdi-refresh` keeping the spec current). On an
+  older Engine it uses NVIDIA's runtime hook, and Tdarr loses the GPU at every
+  `systemctl daemon-reload` (apt and unattended-upgrades run one): `nvidia-smi`
+  in the container fails with "Failed to initialize NVML: Unknown Error" (NVIDIA
+  container-toolkit issue #48). The docs give a check
+  (`sudo systemctl daemon-reload`, then `docker exec tdarr nvidia-smi -L`). The
+  compose files are unchanged apart from a comment.
+- Each app's data moves to one folder per app under the new required setting
+  `CONFIG_ROOT`: its settings and database in `CONFIG_ROOT/<app>/config`, any
+  other folder it needs beside that (`CONFIG_ROOT/tdarr/server`, `tdarr/logs`,
+  `tdarr/transcode`, `haspelsync/logs`), the same layout as every homelab stack
+  (the maintainer's decision, 2026-10-15). `CONFIG_ROOT` replaces
+  `TDARR_SERVER_PATH`, `TDARR_CONFIGS_PATH`, `TDARR_LOGS_PATH`,
+  `TDARR_CACHE_PATH`, `SPOOLMAN_DATA_PATH`, `AMS_PRINTERS_PATH` and
+  `AMS_LOGS_PATH`; the container paths and `MEDIA_PATH` stay the same.
+  `scripts/restore.sh` writes each archive to what the service mounts at that
+  container path now, recreating a container made from an older `compose.yaml`
+  first and creating a missing folder, so a backup of the old folders restores
+  into the new ones ([docs/installing.md](docs/installing.md#where-data-lives)).
+- Docs: a warning never to point a path setting into `/var/lib/docker/volumes`
+  or keep app data in named Docker volumes: `docker volume prune`,
+  `docker system prune --volumes` and Portainer's "remove unused volumes" delete
+  any volume no container mounts as a volume, including one whose `_data` folder
+  a service bind-mounts
   ([docs/installing.md](docs/installing.md#where-data-lives)).
-- `scripts/backup.sh` and `scripts/restore.sh` no longer overlap a deploy on a server that follows `main` with the
-  pull agent. Before anything stops, they wait for a deploy in progress to finish ("Waiting for a deploy by the pull
+- `scripts/backup.sh` and `scripts/restore.sh` no longer overlap a deploy on a
+  server that follows `main` with the pull agent. Before anything stops, they
+  wait for a deploy in progress to finish ("Waiting for a deploy by the pull
   agent to finish"; after 30 minutes they fail without having stopped anything),
-  then hold the agent's lock until they exit, so the agent skips its runs meanwhile and deploys at its next run
-  afterwards. Where the agent keeps no state for the stack, nothing changes
+  then hold the agent's lock until they exit, so the agent skips its runs
+  meanwhile and deploys at its next run afterwards. Where the agent keeps no
+  state for the stack, nothing changes
   ([docs/upgrading.md](docs/upgrading.md#backing-up)).
-- Docs: the roadmap lists what's done (updates, hardening, pull deploys, the badges) and what's next (Tdarr 3, a
-  rehearsed rebuild); the quick start no longer says releases don't exist yet; the docs that described automatic
-  merges as patch and minor only now include majors and image rebuilds.
-- Docs: the maintainer's server now follows `main` with a pull agent instead of running a release tag, so a merge
-  deploys within about two minutes, Dependabot's automatic merges included. Rollback is a revert pull request; a
-  server is held on a version by checking out that commit, which pauses the agent. Release tags stay as signed,
-  verified snapshots ([docs/upgrading.md](docs/upgrading.md#following-main)).
-- Dependabot's image rebuilds (the same tag moving to a new digest: a rebuild of the same app version, with newer
-  base packages) now merge automatically once every required check passes, as on homelab-atlas. The rule merges only
-  a pull request whose one changed file is `compose.yaml`, whose changed lines are all `image:` lines, and whose
-  image tags stay the same. Tdarr's rebuilds wait, like all its updates.
-- Dependabot's major updates now merge automatically too once every required check passes (owner's decision,
-  14 October 2026), so they deploy to the maintainer's server unattended; the nightly backup is the way back from a
-  one-way data migration. Every Tdarr update, and any update Dependabot can't classify, is still merged by hand.
+- Docs: the roadmap lists what's done (updates, hardening, pull deploys, the
+  badges) and what's next (Tdarr 3, a rehearsed rebuild); the quick start no
+  longer says releases don't exist yet; the docs that described automatic merges
+  as patch and minor only now include majors and image rebuilds.
+- Docs: the maintainer's server now follows `main` with a pull agent instead of
+  running a release tag, so a merge deploys within about two minutes,
+  Dependabot's automatic merges included. Rollback is a revert pull request; a
+  server is held on a version by checking out that commit, which pauses the
+  agent. Release tags stay as signed, verified snapshots
+  ([docs/upgrading.md](docs/upgrading.md#following-main)).
+- Dependabot's image rebuilds (the same tag moving to a new digest: a rebuild of
+  the same app version, with newer base packages) now merge automatically once
+  every required check passes, as on homelab-atlas. The rule merges only a pull
+  request whose one changed file is `compose.yaml`, whose changed lines are all
+  `image:` lines, and whose image tags stay the same. Tdarr's rebuilds wait,
+  like all its updates.
+- Dependabot's major updates now merge automatically too once every required
+  check passes (owner's decision, 14 October 2026), so they deploy to the
+  maintainer's server unattended; the nightly backup is the way back from a
+  one-way data migration. Every Tdarr update, and any update Dependabot can't
+  classify, is still merged by hand.
 
 ### Added
 
-- **torrent-watch**: adds new torrents from a model index to qBittorrent by itself, for the watch terms you set, within
-  limits per torrent and in total and a floor of free space on the disk, and only under licences with no terms to accept.
-  What a term matches when it first runs stays out. `TORRENT_WATCH_AT_RISK=true` also adds what the index counts as at
-  risk, smallest first, whether new or not, within the same limits, each from the index's own `.torrent` file. A model
-  whose name marks it as uncensored is never added. A torrent of its own that finds no metadata in a day is removed, which
-  frees its room under the limits. A torrent at risk with no `.torrent` file gets one built here: its files come from
-  Hugging Face at the revision its listing pins, each checked against the listing's SHA-256, qBittorrent makes and seeds a
-  hybrid torrent of them, and the `.torrent` file waits in `ready-to-submit` for you to submit. A torrent of its own stuck
-  just short of done for 6 hours has its unfinished files fetched the same way. torrent-watch now mounts the torrents'
-  folder, read-write, and never backs it up. Every finished torrent in qBittorrent, not only its own, is switched to forced seeding, once per torrent.
-  It is this repository's own script, on the standard library alone,
-  in Python's image, with no ports and a read-only root. The smoke test runs its real poll against qBittorrent.
-  When models are kept out, its at-risk log line names the check that stopped each, the total against its limit and
-  the free space against the floor; when the total limit is one of them, it also gives how many torrents the category
-  holds and the five largest.
-- **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web UI on port 8091 and its peers on port
-  50881: a torrent client for files you're free to share. It makes torrents, seeds them, and downloads from torrent
-  files and magnet links. It has a new required setting, `TORRENTS_PATH`, the only files it can reach, which is never
-  backed up; its settings and torrent list are. Its peers see the host's public IP address: only the peer port is meant
-  to be forwarded, never the web UI. Rebuilds of the pinned version merge by themselves; a new qBittorrent is bumped by
-  hand. The smoke test signs in, adds a magnet link, makes a torrent from a folder and checks that it seeds.
-- **social-to-mealie** 1.8.2 on port 9926: turns a recipe posted on Instagram, TikTok, YouTube Shorts and the like
-  into a Mealie recipe, using OpenAI's API, and posts it to Mealie inside the stack (`http://mealie:9000`; its links
-  point at `MEALIE_PUBLIC_URL`). Its API keys and models are in a gitignored `social-to-mealie.env` (template
-  `social-to-mealie.env.example`), since it reads them only from its environment; no new `.env` setting. It runs as
-  its image's own user with no capabilities and a read-only root (`/tmp` and Next.js' cache in memory), keeps no data,
-  and keeps the yt-dlp built into its pinned image (`YTDLP_VERSION: none`; by default it installs the newest one from
-  PyPI at each start). 1.8.2 fixes GHSA-r63c-m6m6-mvh3 (any earlier version lets whoever reaches it run commands in
-  it). It has no login: keep it on the LAN. Its updates merge automatically like the other services' (not Tdarr's).
-  The smoke test checks that it keeps its own yt-dlp, refuses a URL that isn't http(s), reaches Mealie by its service
-  name, and never writes to its read-only root.
-- Spoolman's database on a PostgreSQL server, optionally: its settings in a gitignored `spoolman.env` (template
-  `spoolman.env.example`; Spoolman refuses empty database settings, so they can't be `.env` settings with empty
-  defaults) and its password in a Docker secret, `CONFIG_ROOT/spoolman/secrets/db_password` (never backed up).
-  Without `spoolman.env` it keeps SQLite as before. The smoke test writes the empty file.
-- **Mealie** 3.30.0 (recipes, meal plans and shopping lists), on port 9925, with its database in PostgreSQL on a
-  database server outside the stack: the connection URL, with the login's password, is a Docker secret file under
-  `CONFIG_ROOT/mealie/secrets`, never a setting, and is neither committed nor backed up. It runs as `PUID:PGID` with
-  no capabilities and a read-only root (`/tmp` in memory), takes new accounts only by invitation
-  (`ALLOW_SIGNUP: "false"`), is limited to 1000 MB of memory, and keeps its recipe images, its own backups and its
-  signing keys in `CONFIG_ROOT/mealie/config`, which the backups cover. New required setting `MEALIE_PUBLIC_URL`. Its
-  updates merge automatically like the other services' (not Tdarr's) and migrate its database on the database
-  server, whose own backups are the way back. The smoke test gives it a throwaway PostgreSQL that refuses connections
-  without TLS, and checks that its tables are there, that it made no SQLite file and that it never wrote to its
-  read-only root.
-- An encrypted copy off the host for the scheduled backup: with `BACKUP_AGE_RECIPIENT` (an age public key) in
-  `backup.env`, only `backup.tar.age` and its `SHA256SUMS` leave the host, and only the private key's holder can
-  read them (`age -d -i <key> backup.tar.age | tar -x`). Needs `age` on the host; optional, and without it the
-  backup is copied as before. The smoke test checks that only the archive leaves, that the key opens it into the
-  backup `scripts/restore.sh` reads, and that another key doesn't.
+- **torrent-watch**: adds new torrents from a model index to qBittorrent by
+  itself, for the watch terms you set, within limits per torrent and in total
+  and a floor of free space on the disk, and only under licences with no terms
+  to accept. What a term matches when it first runs stays out.
+  `TORRENT_WATCH_AT_RISK=true` also adds what the index counts as at risk,
+  smallest first, whether new or not, within the same limits, each from the
+  index's own `.torrent` file. A model whose name marks it as uncensored is
+  never added. A torrent of its own that finds no metadata in a day is removed,
+  which frees its room under the limits. A torrent at risk with no `.torrent`
+  file gets one built here: its files come from Hugging Face at the revision its
+  listing pins, each checked against the listing's SHA-256, qBittorrent makes
+  and seeds a hybrid torrent of them, and the `.torrent` file waits in
+  `ready-to-submit` for you to submit. A torrent of its own stuck just short of
+  done for 6 hours has its unfinished files fetched the same way. torrent-watch
+  now mounts the torrents' folder, read-write, and never backs it up. Every
+  finished torrent in qBittorrent, not only its own, is switched to forced
+  seeding, once per torrent. It is this repository's own script, on the standard
+  library alone, in Python's image, with no ports and a read-only root. The
+  smoke test runs its real poll against qBittorrent. When models are kept out,
+  its at-risk log line names the check that stopped each, the total against its
+  limit and the free space against the floor; when the total limit is one of
+  them, it also gives how many torrents the category holds and the five largest.
+- **qBittorrent** 5.3.0 (libtorrent 2.1) as `qbittorrent-direct`, with its web
+  UI on port 8091 and its peers on port 50881: a torrent client for files you're
+  free to share. It makes torrents, seeds them, and downloads from torrent files
+  and magnet links. It has a new required setting, `TORRENTS_PATH`, the only
+  files it can reach, which is never backed up; its settings and torrent list
+  are. Its peers see the host's public IP address: only the peer port is meant
+  to be forwarded, never the web UI. Rebuilds of the pinned version merge by
+  themselves; a new qBittorrent is bumped by hand. The smoke test signs in, adds
+  a magnet link, makes a torrent from a folder and checks that it seeds.
+- **social-to-mealie** 1.8.2 on port 9926: turns a recipe posted on Instagram,
+  TikTok, YouTube Shorts and the like into a Mealie recipe, using OpenAI's API,
+  and posts it to Mealie inside the stack (`http://mealie:9000`; its links point
+  at `MEALIE_PUBLIC_URL`). Its API keys and models are in a gitignored
+  `social-to-mealie.env` (template `social-to-mealie.env.example`), since it
+  reads them only from its environment; no new `.env` setting. It runs as its
+  image's own user with no capabilities and a read-only root (`/tmp` and
+  Next.js' cache in memory), keeps no data, and keeps the yt-dlp built into its
+  pinned image (`YTDLP_VERSION: none`; by default it installs the newest one
+  from PyPI at each start). 1.8.2 fixes GHSA-r63c-m6m6-mvh3 (any earlier version
+  lets whoever reaches it run commands in it). It has no login: keep it on the
+  LAN. Its updates merge automatically like the other services' (not Tdarr's).
+  The smoke test checks that it keeps its own yt-dlp, refuses a URL that isn't
+  http(s), reaches Mealie by its service name, and never writes to its read-only
+  root.
+- Spoolman's database on a PostgreSQL server, optionally: its settings in a
+  gitignored `spoolman.env` (template `spoolman.env.example`; Spoolman refuses
+  empty database settings, so they can't be `.env` settings with empty defaults)
+  and its password in a Docker secret,
+  `CONFIG_ROOT/spoolman/secrets/db_password` (never backed up). Without
+  `spoolman.env` it keeps SQLite as before. The smoke test writes the empty
+  file.
+- **Mealie** 3.30.0 (recipes, meal plans and shopping lists), on port 9925, with
+  its database in PostgreSQL on a database server outside the stack: the
+  connection URL, with the login's password, is a Docker secret file under
+  `CONFIG_ROOT/mealie/secrets`, never a setting, and is neither committed nor
+  backed up. It runs as `PUID:PGID` with no capabilities and a read-only root
+  (`/tmp` in memory), takes new accounts only by invitation
+  (`ALLOW_SIGNUP: "false"`), is limited to 1000 MB of memory, and keeps its
+  recipe images, its own backups and its signing keys in
+  `CONFIG_ROOT/mealie/config`, which the backups cover. New required setting
+  `MEALIE_PUBLIC_URL`. Its updates merge automatically like the other services'
+  (not Tdarr's) and migrate its database on the database server, whose own
+  backups are the way back. The smoke test gives it a throwaway PostgreSQL that
+  refuses connections without TLS, and checks that its tables are there, that it
+  made no SQLite file and that it never wrote to its read-only root.
+- An encrypted copy off the host for the scheduled backup: with
+  `BACKUP_AGE_RECIPIENT` (an age public key) in `backup.env`, only
+  `backup.tar.age` and its `SHA256SUMS` leave the host, and only the private
+  key's holder can read them (`age -d -i <key> backup.tar.age | tar -x`). Needs
+  `age` on the host; optional, and without it the backup is copied as before.
+  The smoke test checks that only the archive leaves, that the key opens it into
+  the backup `scripts/restore.sh` reads, and that another key doesn't.
 
 ### Fixed
 
-- The smoke test's restore into a removed config folder also runs for a stack built from this one where only one app
-  keeps its data in `CONFIG_ROOT/<app>/config`; it used to fail with "no app keeps its data in
-  CONFIG_ROOT/<app>/config". Deimos has three such apps (Tdarr, Spoolman and the AMS app) and isn't affected.
-- CI's smoke test always logs out of Docker Hub after pulling the images, also when it pulled anonymously on a runner
-  image that comes with a Docker Hub entry of its own.
-- **The Dozzle agent keeps the notification settings the Dozzle hub sends it in memory** (`/data` is a tmpfs now).
-  It saves them to `/data`, which was part of its read-only root filesystem, so each time the hub started the agent
-  logged "failed to save config: open ./data/notifications.yml: read-only file system" and "Could not remove cloud.yml
-  on agent", and the hub "Failed to broadcast notification config to agent". The hub keeps these settings itself and
-  sends them again each time it starts, so nothing is kept on disk or in the backups. The smoke test now starts a
-  throwaway hub and checks that the agent takes its settings. Nothing to do on the host.
+- The smoke test's restore into a removed config folder also runs for a stack
+  built from this one where only one app keeps its data in
+  `CONFIG_ROOT/<app>/config`; it used to fail with "no app keeps its data in
+  `CONFIG_ROOT/<app>/config`". Deimos has three such apps (Tdarr, Spoolman and
+  the AMS app) and isn't affected.
+- CI's smoke test always logs out of Docker Hub after pulling the images, also
+  when it pulled anonymously on a runner image that comes with a Docker Hub
+  entry of its own.
+- **The Dozzle agent keeps the notification settings the Dozzle hub sends it in
+  memory** (`/data` is a tmpfs now). It saves them to `/data`, which was part of
+  its read-only root filesystem, so each time the hub started the agent logged
+  "failed to save config: open ./data/notifications.yml: read-only file system"
+  and "Could not remove cloud.yml on agent", and the hub "Failed to broadcast
+  notification config to agent". The hub keeps these settings itself and sends
+  them again each time it starts, so nothing is kept on disk or in the backups.
+  The smoke test now starts a throwaway hub and checks that the agent takes its
+  settings. Nothing to do on the host.
 
-- `scripts/backup.sh` no longer leaves a service down when stopping it fails. A process that can't exit in time
-  (stuck writing to a network share) made the stop fail while its container was still on its way down; the backup
-  gave up, started the services again at once (Compose skipped the container, which still ran) and the service stayed
-  stopped once it exited, as `restart: unless-stopped` doesn't restart after a stop. The rest of the backup and the
-  copy off the host were never made. Now the backup waits up to `BACKUP_STOP_WAIT` seconds (default 120) for the
-  container to exit and carries on; if it still runs then, the backup fails and waits once more before starting
-  anything. Every service that was running when the backup began must be running again at the end, or the backup
-  fails and names it (the scheduled backup reports that to the push monitor).
-- `scripts/restore.sh` stops a service that bind-mounts a folder inside a mount it restores, and starts it again
-  afterwards. Such a container kept seeing the folder the restore had replaced, deleted, until it restarted (found on
-  homelab-hyperion, whose Steerhouse worker reads the API's Galaxy folder). No service here does that today; the smoke
-  test now checks it with a test container that follows another app's folder.
+- `scripts/backup.sh` no longer leaves a service down when stopping it fails. A
+  process that can't exit in time (stuck writing to a network share) made the
+  stop fail while its container was still on its way down; the backup gave up,
+  started the services again at once (Compose skipped the container, which still
+  ran) and the service stayed stopped once it exited, as
+  `restart: unless-stopped` doesn't restart after a stop. The rest of the backup
+  and the copy off the host were never made. Now the backup waits up to
+  `BACKUP_STOP_WAIT` seconds (default 120) for the container to exit and carries
+  on; if it still runs then, the backup fails and waits once more before
+  starting anything. Every service that was running when the backup began must
+  be running again at the end, or the backup fails and names it (the scheduled
+  backup reports that to the push monitor).
+- `scripts/restore.sh` stops a service that bind-mounts a folder inside a mount
+  it restores, and starts it again afterwards. Such a container kept seeing the
+  folder the restore had replaced, deleted, until it restarted (found on
+  homelab-hyperion, whose Steerhouse worker reads the API's Galaxy folder). No
+  service here does that today; the smoke test now checks it with a test
+  container that follows another app's folder.
 
 ### Security
 
-- **The Dozzle agent no longer accepts the certificate built into every Dozzle image.** Dozzle v11.3.4 warned that
-  the agent used that pair, which every copy of the image ships, so anyone on the LAN with a Dozzle image could
-  connect to its port and read every container's log or control Docker through it. The agent now reads a pair of
-  its own, shared only with the homelab's Dozzle hub, from Docker secrets in `CONFIG_ROOT/dozzle/certs` (owned by
-  root, never committed or backed up), and doesn't start without it. The smoke test makes a throwaway pair and
-  checks that the agent accepts a hub with it and refuses one with the built-in pair
+- **The Dozzle agent no longer accepts the certificate built into every Dozzle
+  image.** Dozzle v11.3.4 warned that the agent used that pair, which every copy
+  of the image ships, so anyone on the LAN with a Dozzle image could connect to
+  its port and read every container's log or control Docker through it. The
+  agent now reads a pair of its own, shared only with the homelab's Dozzle hub,
+  from Docker secrets in `CONFIG_ROOT/dozzle/certs` (owned by root, never
+  committed or backed up), and doesn't start without it. The smoke test makes a
+  throwaway pair and checks that the agent accepts a hub with it and refuses one
+  with the built-in pair
   ([docs/installing.md](docs/installing.md#dozzles-certificate)).
-- The Dozzle agent moves to v11.3.4 (built with Go 1.27.3), which fixes the image scan's Go `crypto/x509` finding
-  (CVE-2026-111943) in v11.3.2. Dependabot didn't propose it: it holds back Docker Hub releases for a few days
-  after they're published, and both v11.3.3 and v11.3.4 were still that new at its last run.
+- The Dozzle agent moves to v11.3.4 (built with Go 1.27.3), which fixes the
+  image scan's Go `crypto/x509` finding (CVE-2026-111943) in v11.3.2. Dependabot
+  didn't propose it: it holds back Docker Hub releases for a few days after
+  they're published, and both v11.3.3 and v11.3.4 were still that new at its
+  last run.
 
 ## [0.3.0] - 2026-10-14
 
-### Added
+### Added in 0.3.0
 
-- Label `org.honeybeartech.deimos.backup.exclude`: paths inside a data mount (comma-separated, at any depth) that a
-  backup leaves out of the mount's archive and a restore leaves in place. A path outside every data mount, or with
-  `..` or a pattern character, fails the backup and the restore before anything stops. No service uses it yet;
-  the `backup.skip` labels (Tdarr's `/media`, `/temp`, `/app/logs`, the AMS app's `/app/logs`) back up exactly
+- Label `org.honeybeartech.deimos.backup.exclude`: paths inside a data mount
+  (comma-separated, at any depth) that a backup leaves out of the mount's
+  archive and a restore leaves in place. A path outside every data mount, or
+  with `..` or a pattern character, fails the backup and the restore before
+  anything stops. No service uses it yet; the `backup.skip` labels (Tdarr's
+  `/media`, `/temp`, `/app/logs`, the AMS app's `/app/logs`) back up exactly
   what they did before.
-- CI logs in to Docker Hub with a read-only token when the repository has one (`DOCKERHUB_USERNAME`,
-  `DOCKERHUB_TOKEN`), so image pulls no longer hit the runners' shared anonymous limit; without it, CI pulls
-  anonymously as before. The smoke test logs out before any container starts (GOVERNANCE.md).
-- `.gitlab-ci.yml` for a mirror on the maintainer's self-hosted GitLab, which re-runs the checks that need no
-  Docker daemon. It does nothing until that GitLab project, its `MIRROR_TOKEN` and a schedule exist.
+- CI logs in to Docker Hub with a read-only token when the repository has one
+  (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`), so image pulls no longer hit the
+  runners' shared anonymous limit; without it, CI pulls anonymously as before.
+  The smoke test logs out before any container starts (GOVERNANCE.md).
+- `.gitlab-ci.yml` for a mirror on the maintainer's self-hosted GitLab, which
+  re-runs the checks that need no Docker daemon. It does nothing until that
+  GitLab project, its `MIRROR_TOKEN` and a schedule exist.
 
-### Changed
+### Changed in 0.3.0
 
-- `scripts/backup.sh` stops each service only while its data is copied, and compresses the copies after starting
-  it again, with `pigz` on every core when it's installed (else `gzip`): Tdarr and the other services are down for
-  a shorter time. Install pigz on the host (`docs/installing.md#scheduled-backups`). Services that Compose stopped
-  along with the one being backed up (the AMS app, with Spoolman) are started again too, and the copy runs without
-  a log driver, so Docker no longer writes the whole archive into the copying container's log.
-- A mount inside another mount is archived on its own and left out of the outer mount's archive, and a restore of
-  the outer mount leaves it in place. (No service mounts one inside another today.)
-- The nightly backup runs in the best-effort I/O class at the lowest priority instead of the idle class, which
-  could keep a stopped service waiting behind every other disk user on the host. **Re-install the systemd units**
-  after upgrading (`docs/upgrading.md`); the timer stays at 04:00.
-- The backup scripts, smoke test and workflows are kept the same as homelab-ares' (the template for the homelab
-  stacks).
-- docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as not reachable (rechecked on
-  2.96.01: the container never runs them); Tdarr has 465 open alerts.
-- README: Dependabot's patch and minor updates merge on their own (Tdarr's and major updates wait for the
-  maintainer); scheduled backups, `restore.sh` and `backup.env` are listed; the policy check's full rule list; the
-  opening line names the services, matching the repository description.
+- `scripts/backup.sh` stops each service only while its data is copied, and
+  compresses the copies after starting it again, with `pigz` on every core when
+  it's installed (else `gzip`): Tdarr and the other services are down for a
+  shorter time. Install pigz on the host
+  (`docs/installing.md#scheduled-backups`). Services that Compose stopped along
+  with the one being backed up (the AMS app, with Spoolman) are started again
+  too, and the copy runs without a log driver, so Docker no longer writes the
+  whole archive into the copying container's log.
+- A mount inside another mount is archived on its own and left out of the outer
+  mount's archive, and a restore of the outer mount leaves it in place. (No
+  service mounts one inside another today.)
+- The nightly backup runs in the best-effort I/O class at the lowest priority
+  instead of the idle class, which could keep a stopped service waiting behind
+  every other disk user on the host. **Re-install the systemd units** after
+  upgrading (`docs/upgrading.md`); the timer stays at 04:00.
+- The backup scripts, smoke test and workflows are kept the same as
+  homelab-ares' (the template for the homelab stacks).
+- docs/dependencies.md: six new alerts for Tdarr's tray apps are dismissed as
+  not reachable (rechecked on 2.96.01: the container never runs them); Tdarr has
+  465 open alerts.
+- README: Dependabot's patch and minor updates merge on their own (Tdarr's and
+  major updates wait for the maintainer); scheduled backups, `restore.sh` and
+  `backup.env` are listed; the policy check's full rule list; the opening line
+  names the services, matching the repository description.
 
-### Security
+### Security in 0.3.0
 
-- Every service drops every Linux capability and runs with `no-new-privileges` (also with `compose.gpu.yaml`).
-  Tdarr adds back `CHOWN`, `DAC_OVERRIDE`, `SETUID`, `SETGID` and `KILL` for its init, which runs as root and
-  starts the server and node as its own user; Spoolman adds back `SETUID` and `SETGID` to switch to its
-  user. The AMS app now runs as `PUID`:`PGID` instead of root and adds back none, like the others. The table is
-  in docs/security.md#hardening.
-- Spoolman, the AMS app, the Dozzle agent and autoheal get a read-only root filesystem (`/tmp` in memory where
-  they write it), like socket-proxy already had. Tdarr's stays writable. Spoolman's `PUID`/`PGID` must now stay
-  1000, its image's user.
-- The policy check enforces it: new rules `no-new-privileges` and `cap-drop`, and `cap-add` now fails only on a
-  capability outside Docker's default set (the checker is the same as homelab-ares').
-- **Upgrading:** take a backup first. Data with unexpected file owners can now fail with `EACCES` (permission
-  denied): Tdarr's, Spoolman's and the AMS app's data must belong to `PUID`/`PGID`. The AMS app's
-  directories belonged to root while it ran as root: hand them over before the upgrade
-  (`sudo chown -R "$PUID:$PGID" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"`, with the values from `.env`), or it stays
-  healthy but can't save its settings, its printers or its logs. A backup taken before the upgrade restores them
-  as root's again. The hardening was tested on fresh, empty data only: after the upgrade check that Tdarr still
-  sees the GPU, its libraries and its queue, and run one small transcode before resuming it; check Spoolman and
-  the AMS app save changes. To go back, check out the previous release and `docker compose up -d`.
+- Every service drops every Linux capability and runs with `no-new-privileges`
+  (also with `compose.gpu.yaml`). Tdarr adds back `CHOWN`, `DAC_OVERRIDE`,
+  `SETUID`, `SETGID` and `KILL` for its init, which runs as root and starts the
+  server and node as its own user; Spoolman adds back `SETUID` and `SETGID` to
+  switch to its user. The AMS app now runs as `PUID`:`PGID` instead of root and
+  adds back none, like the others. The table is in docs/security.md#hardening.
+- Spoolman, the AMS app, the Dozzle agent and autoheal get a read-only root
+  filesystem (`/tmp` in memory where they write it), like socket-proxy already
+  had. Tdarr's stays writable. Spoolman's `PUID`/`PGID` must now stay 1000, its
+  image's user.
+- The policy check enforces it: new rules `no-new-privileges` and `cap-drop`,
+  and `cap-add` now fails only on a capability outside Docker's default set (the
+  checker is the same as homelab-ares').
+- **Upgrading:** take a backup first. Data with unexpected file owners can now
+  fail with `EACCES` (permission denied): Tdarr's, Spoolman's and the AMS app's
+  data must belong to `PUID`/`PGID`. The AMS app's directories belonged to root
+  while it ran as root: hand them over before the upgrade
+  (`sudo chown -R "$PUID:$PGID" "$AMS_PRINTERS_PATH" "$AMS_LOGS_PATH"`, with the
+  values from `.env`), or it stays healthy but can't save its settings, its
+  printers or its logs. A backup taken before the upgrade restores them as
+  root's again. The hardening was tested on fresh, empty data only: after the
+  upgrade check that Tdarr still sees the GPU, its libraries and its queue, and
+  run one small transcode before resuming it; check Spoolman and the AMS app
+  save changes. To go back, check out the previous release and
+  `docker compose up -d`.
 
 ## [0.2.1] - 2026-10-13
 
-### Changed
+### Changed in 0.2.1
 
-- Tdarr 2.86.01 → 2.96.01, the last 2.x release. It moves and copies files on network shares more reliably,
-  noticing a failed write before a move deletes the source; keeps files in a library whose folder can't be read
-  for the moment (a network outage) instead of dropping them; and copies finished files to NFS and SMB mounts
-  more reliably. Its Rust engine, which Tdarr's servers already switched 2.86.01 to on 11 October 2026, is past
-  its beta. No database migration or plugin changes. Back up and let the queue drain first
-  ([docs/upgrading.md](docs/upgrading.md)). If the Rust engine misbehaves, `TDARR_ENGINE=nodejs` in the Tdarr
-  service's environment brings the old one back (2.x only).
+- Tdarr 2.86.01 → 2.96.01, the last 2.x release. It moves and copies files on
+  network shares more reliably, noticing a failed write before a move deletes
+  the source; keeps files in a library whose folder can't be read for the moment
+  (a network outage) instead of dropping them; and copies finished files to NFS
+  and SMB mounts more reliably. Its Rust engine, which Tdarr's servers already
+  switched 2.86.01 to on 11 October 2026, is past its beta. No database
+  migration or plugin changes. Back up and let the queue drain first
+  ([docs/upgrading.md](docs/upgrading.md)). If the Rust engine misbehaves,
+  `TDARR_ENGINE=nodejs` in the Tdarr service's environment brings the old one
+  back (2.x only).
 
-- docs/installing.md: HaspelSync behind a reverse proxy or under a DNS name needs that name under Settings →
-  Allowed host names (it answers `403` until then), and its API answers only its web UI and callers with an API key.
-- docs/dependencies.md: the image updates are deployed; the 58 alerts for the AMS app's old image are dismissed.
+- docs/installing.md: HaspelSync behind a reverse proxy or under a DNS name
+  needs that name under Settings → Allowed host names (it answers `403` until
+  then), and its API answers only its web UI and callers with an API key.
+- docs/dependencies.md: the image updates are deployed; the 58 alerts for the
+  AMS app's old image are dismissed.
 
 ## [0.2.0] - 2026-10-13
 
-### Added
+### Added in 0.2.0
 
-- Scheduled backups: `scripts/scheduled-backup.sh` takes a backup, copies it off the host with rsync, keeps the
-  newest few here and there, and reports to an Uptime Kuma push monitor. Settings in the optional, gitignored
-  `backup.env` (template `backup.env.example`); systemd user units in `deploy/systemd/` run it nightly at 04:00
-  (docs/installing.md#scheduled-backups). The smoke test runs it against a stand-in backup server.
-- Each backup records `NETWORKS` (the address ranges of networks the stack joins but doesn't create) and `VERSION`
-  (the checkout's `git describe`, the release to rebuild with).
-- A Dozzle agent (`dozzle agent`, port 7007) for the homelab's Dozzle hub on another host, which shows every host's
-  logs in one web UI, pinned at 11.3.2, the hub's version. It mounts the Docker socket read-only (a labelled policy
-  exception: keep port 7007 on the LAN), has a health check and is restarted by autoheal. A `dozzle-agent`
-  container started outside Compose has to be removed (`docker rm -f dozzle-agent`) before the first
-  `docker compose up`.
+- Scheduled backups: `scripts/scheduled-backup.sh` takes a backup, copies it off
+  the host with rsync, keeps the newest few here and there, and reports to an
+  Uptime Kuma push monitor. Settings in the optional, gitignored `backup.env`
+  (template `backup.env.example`); systemd user units in `deploy/systemd/` run
+  it nightly at 04:00 (docs/installing.md#scheduled-backups). The smoke test
+  runs it against a stand-in backup server.
+- Each backup records `NETWORKS` (the address ranges of networks the stack joins
+  but doesn't create) and `VERSION` (the checkout's `git describe`, the release
+  to rebuild with).
+- A Dozzle agent (`dozzle agent`, port 7007) for the homelab's Dozzle hub on
+  another host, which shows every host's logs in one web UI, pinned at 11.3.2,
+  the hub's version. It mounts the Docker socket read-only (a labelled policy
+  exception: keep port 7007 on the LAN), has a health check and is restarted by
+  autoheal. A `dozzle-agent` container started outside Compose has to be removed
+  (`docker rm -f dozzle-agent`) before the first `docker compose up`.
 
-### Changed
+### Changed in 0.2.0
 
-- `scripts/backup.sh` stops one service at a time, only while its own data is archived, instead of the whole stack;
-  services with nothing to archive (autoheal, socket-proxy, the Dozzle agent) keep running.
-- Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates forward on the first start, so
-  back up first ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default (`SPOOLMAN_LEGACY_CLIENT`
-  brings the old one back), and cross-origin writes are refused. The image has no `curl` any more, so the health
-  check uses its Python.
-- The AMS app 1.1.1-dev → HaspelSync 1.3.3, under the project's new image name `ghcr.io/rdiger-36/haspelsync`
-  (67 image-scan alerts → 11); the container is now called `haspelsync`. It reads the existing printer list and
-  logs a deprecation notice while `compose.yaml`'s environment variables still decide its settings (saving them
-  once in its web UI moves them into `printers/settings.json`). It now books what a print used from the print's
-  sliced file, fetched from the printer over FTPS (port 990); set a web UI password under Settings → Network
-  access.
+- `scripts/backup.sh` stops one service at a time, only while its own data is
+  archived, instead of the whole stack; services with nothing to archive
+  (autoheal, socket-proxy, the Dozzle agent) keep running.
+- Spoolman 0.22.1 → 0.27.0 (1,846 image-scan alerts → 16). Its database migrates
+  forward on the first start, so back up first
+  ([docs/upgrading.md](docs/upgrading.md)); a new web client is the default
+  (`SPOOLMAN_LEGACY_CLIENT` brings the old one back), and cross-origin writes
+  are refused. The image has no `curl` any more, so the health check uses its
+  Python.
+- The AMS app 1.1.1-dev → HaspelSync 1.3.3, under the project's new image name
+  `ghcr.io/rdiger-36/haspelsync` (67 image-scan alerts → 11); the container is
+  now called `haspelsync`. It reads the existing printer list and logs a
+  deprecation notice while `compose.yaml`'s environment variables still decide
+  its settings (saving them once in its web UI moves them into
+  `printers/settings.json`). It now books what a print used from the print's
+  sliced file, fetched from the printer over FTPS (port 990); set a web UI
+  password under Settings → Network access.
 
 ## [0.1.0] - 2026-10-08
 
-The first release: the Deimos stack as a Compose file, every image pinned by version tag and digest for
-`linux/amd64` at the versions the server runs today, with health checks, autoheal, a GPU override, backups that
-leave the media library alone, and release signing around it.
+The first release: the Deimos stack as a Compose file, every image pinned by
+version tag and digest for `linux/amd64` at the versions the server runs today,
+with health checks, autoheal, a GPU override, backups that leave the media
+library alone, and release signing around it.
 
-### Added
+### Added in 0.1.0
 
-- `compose.yaml`: Tdarr 2.86.01 (server with an internal node), Spoolman 0.22.1 and the AMS app (HaspelSync,
-  1.1.1-dev build), each pinned by tag and digest for `linux/amd64` with a health check, at the versions the
-  server runs today. The AMS app reaches Spoolman inside the stack. Tdarr's media library, transcode cache and
-  logs and the AMS app's logs are excluded from backups.
-- autoheal, behind a filtering socket proxy (read-only socket, internal network, only list, inspect, restart and
-  stop): restarts any service whose health check fails, and can post a notice to a webhook in `autoheal.env`. The
-  smoke test checks that it restarts an unhealthy container.
-- `compose.gpu.yaml`: reserves the host's NVIDIA GPU for Tdarr; added on the host through `COMPOSE_FILE`, left
-  out by CI. CI checks the policy with and without it.
-- A `devices` policy rule: a service may not map host devices into its container (a GPU reservation is fine)
-  unless an allow label gives the reason.
-- Documentation: quick start, installing, upgrading, rebuilding, architecture, interfaces, security
-  requirements, assurance case, dependencies, roadmap and verifying releases. Everything that depends on
-  `compose.yaml`, which doesn't exist yet, is marked **Planned**.
-- `.env.example` with the settings the stack is expected to read, and a `.gitignore` that keeps settings,
-  service data, media, backups and keys out of the repository.
-- Project policies (`SECURITY.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`),
-  `CODEOWNERS`, issue and pull request templates.
-- `scripts/check_compose.py`: the stack's policy check (every image pinned as `name:tag@sha256:<digest>`, no
-  `latest`, no build, nothing privileged, no added capabilities, host network or PID namespace, no Docker
-  socket mount, a health check on every service, unless a service's `org.honeybeartech.deimos.allow.<rule>`
-  label gives the reason), and the CycloneDX SBOM of the images for releases; tests with a 90 % branch-coverage
+- `compose.yaml`: Tdarr 2.86.01 (server with an internal node), Spoolman 0.22.1
+  and the AMS app (HaspelSync, 1.1.1-dev build), each pinned by tag and digest
+  for `linux/amd64` with a health check, at the versions the server runs today.
+  The AMS app reaches Spoolman inside the stack. Tdarr's media library,
+  transcode cache and logs and the AMS app's logs are excluded from backups.
+- autoheal, behind a filtering socket proxy (read-only socket, internal network,
+  only list, inspect, restart and stop): restarts any service whose health check
+  fails, and can post a notice to a webhook in `autoheal.env`. The smoke test
+  checks that it restarts an unhealthy container.
+- `compose.gpu.yaml`: reserves the host's NVIDIA GPU for Tdarr; added on the
+  host through `COMPOSE_FILE`, left out by CI. CI checks the policy with and
+  without it.
+- A `devices` policy rule: a service may not map host devices into its container
+  (a GPU reservation is fine) unless an allow label gives the reason.
+- Documentation: quick start, installing, upgrading, rebuilding, architecture,
+  interfaces, security requirements, assurance case, dependencies, roadmap and
+  verifying releases. Everything that depends on `compose.yaml`, which doesn't
+  exist yet, is marked **Planned**.
+- `.env.example` with the settings the stack is expected to read, and a
+  `.gitignore` that keeps settings, service data, media, backups and keys out of
+  the repository.
+- Project policies (`SECURITY.md`, `CONTRIBUTING.md`, `GOVERNANCE.md`,
+  `SUPPORT.md`, `CODE_OF_CONDUCT.md`), `CODEOWNERS`, issue and pull request
+  templates.
+- `scripts/check_compose.py`: the stack's policy check (every image pinned as
+  `name:tag@sha256:<digest>`, no `latest`, no build, nothing privileged, no
+  added capabilities, host network or PID namespace, no Docker socket mount, a
+  health check on every service, unless a service's
+  `org.honeybeartech.deimos.allow.<rule>` label gives the reason), and the
+  CycloneDX SBOM of the images for releases; tests with a 90 % branch-coverage
   floor.
-- `scripts/backup.sh` and `scripts/restore.sh`: back up every service's read-write data mounts and the
-  settings files with a manifest and checksums (readable only by the user who ran it), and restore them after
-  verifying the checksums and asking first. Paths in a service's `org.honeybeartech.deimos.backup.skip` label
-  (the media library, caches, logs) are never archived, and a restore refuses to write them.
-  `scripts/smoke-test.sh` starts the stack with throwaway settings, waits until every service is healthy, runs a
-  backup and restore round trip and checks that excluded paths are left alone.
-- CI on every change: ruff, yamllint, shellcheck, actionlint, gitleaks over the whole history, the checker's
-  tests, and (once `compose.yaml` exists) the policy check and the smoke test on an amd64 runner. CodeQL,
-  OpenSSF Scorecard, dependency review, a DCO check and a weekly image scan (Trivy, `linux/amd64`) also run.
-- Dependabot for the images, the Python tools and the Actions; patch and minor updates merge automatically
-  once every required check passes, except Tdarr's; major updates wait for the maintainer.
-- A release workflow that publishes a source archive, the SBOM, `SHA256SUMS` signed keylessly with cosign,
-  and SLSA build provenance ([docs/verifying-releases.md](docs/verifying-releases.md)).
+- `scripts/backup.sh` and `scripts/restore.sh`: back up every service's
+  read-write data mounts and the settings files with a manifest and checksums
+  (readable only by the user who ran it), and restore them after verifying the
+  checksums and asking first. Paths in a service's
+  `org.honeybeartech.deimos.backup.skip` label (the media library, caches, logs)
+  are never archived, and a restore refuses to write them.
+  `scripts/smoke-test.sh` starts the stack with throwaway settings, waits until
+  every service is healthy, runs a backup and restore round trip and checks that
+  excluded paths are left alone.
+- CI on every change: ruff, yamllint, shellcheck, actionlint, gitleaks over the
+  whole history, the checker's tests, and (once `compose.yaml` exists) the
+  policy check and the smoke test on an amd64 runner. CodeQL, OpenSSF Scorecard,
+  dependency review, a DCO check and a weekly image scan (Trivy, `linux/amd64`)
+  also run.
+- Dependabot for the images, the Python tools and the Actions; patch and minor
+  updates merge automatically once every required check passes, except Tdarr's;
+  major updates wait for the maintainer.
+- A release workflow that publishes a source archive, the SBOM, `SHA256SUMS`
+  signed keylessly with cosign, and SLSA build provenance
+  ([docs/verifying-releases.md](docs/verifying-releases.md)).
 
 [Unreleased]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/HoneyBearTech/homelab-deimos/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/HoneyBearTech/homelab-deimos/releases/tag/v0.1.0
+
+[link-1]: docs/installing.md#the-gpu-and-docker-292
