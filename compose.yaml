@@ -182,7 +182,7 @@ services:
     # Recipes, meal plans and shopping lists. Its database is PostgreSQL on another server, never in this stack: the
     # connection URL, with the login's password, is a Docker secret (the secrets at the end). It migrates that database
     # forward on the first start of a new version, so a backup there comes first (docs/upgrading.md).
-    image: ghcr.io/mealie-recipes/mealie:v3.30.0@sha256:90f83da6f3ab0a421efc827118a556168573930105f13fa3321768f42163d784
+    image: ghcr.io/mealie-recipes/mealie:v3.31.0@sha256:97e21ac96e9a8d1ee15aaf558ba3f14998936b9d6f334e40ebb4c6c2127dc12f
     container_name: mealie
     restart: unless-stopped
     # Its image would start as root, change its own user's ids to PUID/PGID, take ownership of /app and switch to that
@@ -325,7 +325,7 @@ services:
     # Adds new torrents from a model index to qBittorrent, within the limits below (docs/installing.md#torrent-watch).
     # With no watch terms it does nothing. It is this repository's own script, on the standard library alone, run in
     # Python's image rather than built into one (the policy refuses building images).
-    image: python:3.15.0-alpine3.24@sha256:2699b90f4d562a22e2dd076c82f964032f64814204bff36d271a54ba4cc2c7e2
+    image: python:3.15.2-alpine3.24@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
     container_name: torrent-watch
     restart: unless-stopped
     # It runs as PUID:PGID, which own its folder and the torrents' folder, so it needs no capability. It writes its
@@ -372,7 +372,7 @@ services:
   # Dozzle image, which anyone can use.
   dozzle-agent:
     <<: *hardened
-    image: amir20/dozzle:v11.4.2@sha256:08cd5230e21e364241f3dcf26191f293166f7835654eb7e41168b9c685f0947b
+    image: amir20/dozzle:v11.4.3@sha256:244f218c876d6ed766277e71a537f34bfb2c01829e1927737e3673a8327deeb8
     container_name: dozzle-agent
     restart: unless-stopped
     read_only: true
