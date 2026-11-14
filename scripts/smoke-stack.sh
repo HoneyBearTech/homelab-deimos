@@ -108,7 +108,7 @@ mealie_service=mealie
 mealie_db=mealie-test-db
 
 # The PostgreSQL the database server runs, pinned like busybox in lib.sh (bumped by hand, docs/dependencies.md).
-mealie_db_image=postgres:18.6-trixie@sha256:edb0c08dc33befd0262ab3b5cf1c4f3f8cfd8b09e88c05b45adee29d6761ddb6
+mealie_db_image=postgres:18.7-trixie@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
 
 mealie_prepare() {
   local password
