@@ -120,6 +120,56 @@ first, and remove the old copies only once the stack runs from `CONFIG_ROOT`.
 The maintainer's server runs `main` rather than a release, and deploys every merge by itself
 ([upgrading.md](upgrading.md#following-main)). For your own setup, a release is the safer choice.
 
+## Optional service groups
+
+The base stack starts every service. To run a smaller installation, include
+[`compose.profiles.yaml`](../compose.profiles.yaml) and select groups in `.env`:
+
+```sh
+COMPOSE_FILE=compose.yaml:compose.profiles.yaml
+COMPOSE_PROFILES=printing,recipes,logs,autoheal
+```
+
+With a GPU, use `COMPOSE_FILE=compose.yaml:compose.gpu.yaml:compose.profiles.yaml`.
+The groups are `media` (Tdarr), `printing` (Spoolman and the AMS app), `recipes` (Mealie and
+social-to-mealie), `torrents` (qBittorrent and torrent-watch), `logs` (the Dozzle agent), and
+`autoheal` (autoheal and its socket proxy). Each group includes its dependencies. With this override
+and no selected profiles, no service starts. Use `docker compose config --services` to inspect the selection.
+
+Keep the other required `.env` settings filled in, even for disabled services: Compose interpolates the
+whole file before selecting services. Persist profiles in `.env` so deployments, backups and restores use
+the same selection. Before disabling a group on an existing installation, back it up and stop its services
+with `docker compose stop <service>...`; changing profiles does not stop existing containers. Its data stays
+on disk, but future backups cover only enabled groups. To restore an older backup, first enable every group
+represented in it (or restore its `.env`). `COMPOSE_PROFILES=media,printing,recipes,torrents,logs,autoheal`
+enables the full stack with this override.
+
+## Tdarr login
+
+Tdarr's login is available as an opt-in migration. Keep the LAN and reverse-proxy restrictions in place.
+Back up first, then generate a private key file; the example file describes its two settings:
+
+```sh
+(
+  set -C
+  umask 077
+  tdarr_key="tapi_$(openssl rand -hex 32)"
+  printf 'seededApiKey=%s\napiKey=%s\n' "$tdarr_key" "$tdarr_key" > tdarr.env
+)
+```
+
+Append `:compose.tdarr-auth.yaml` to `COMPOSE_FILE` in `.env` (with `compose.yaml` first), then run
+`docker compose up -d --wait tdarr`. Both settings must hold the same nonempty key: the server seeds it
+and the internal node uses it to connect. The override also sends that key with the health check.
+The key stays in gitignored `tdarr.env`, mode `600`, and backups include it; never put it in `.env`.
+
+For a new installation with no users, the initial account is `admin` and its password is the seeded key;
+read the key locally from the private file, sign in, and change the account password. Existing accounts
+retain their passwords. Confirm an anonymous browser sees the login page, the internal node appears in
+the Tdarr tab and the container stays healthy. External nodes also need a valid API key in their private
+configuration. [Upstream authentication guidance](https://docs.tdarr.io/docs/other/authentication/) describes
+account and key management. Removing the override and recreating Tdarr restores the previous login setting.
+
 ## Dozzle's certificate
 
 The Dozzle agent and the homelab's Dozzle (the hub, on another host) authenticate each other with a certificate and

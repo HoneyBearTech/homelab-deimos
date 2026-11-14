@@ -5,6 +5,20 @@ How to bring the stack back on a new or wiped machine from a backup made by `scr
 
 > **Planned:** the rebuild hasn't been rehearsed on a scratch machine yet ([roadmap](roadmap.md)).
 
+A rehearsal needs an isolated amd64 machine with a GPU, a private copy of a backup and disposable copies of
+media and torrent data. Keep the pull agent disabled there, isolate printer access and use separate published
+addresses so the scratch stack cannot interfere with the live services. Use the steps below, then verify:
+
+- Every restored service becomes healthy, and its settings and history match the backup.
+- The media and torrent copies remain intact; neither is supplied by the service backup.
+- Tdarr sees the GPU before and after `sudo systemctl daemon-reload`, and transcodes a disposable sample.
+- A fresh backup of the restored stack passes its checksums and can be restored again.
+- If profiles or Tdarr login are enabled, the selected service list, sign-in and internal node also work.
+
+Record the tested commit, operating system, Docker and toolkit versions and the result of each check before
+marking the rehearsal complete. Do not put private paths, addresses, account details or backup contents in the
+repository.
+
 You need: the backup directory (copied off the old host), **the age private key** it was encrypted to if the copies
 off the host are encrypted (`BACKUP_AGE_RECIPIENT`), this repository, and access to the media library.
 

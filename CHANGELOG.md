@@ -104,6 +104,12 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- Local hooks pin the Markdown linter's Node runtime and use the native,
+  hash-pinned shell checker, so shell checks need no Docker daemon.
+- Refresh the pinned BusyBox, PostgreSQL, socket-proxy and autoheal digests.
+- Helper-image dependency patterns use explicit line boundaries, supported
+  by both the native regex engine and its fallback.
+
 - The smoke test runs a stack's own steps from `scripts/smoke-stack.sh` when
   that exists (`smoke_prepare` before the services start, `smoke_check` once
   they are healthy and again after the restore), gives a `*_SUBNET` setting a
@@ -169,6 +175,12 @@ All notable changes to homelab-deimos are documented here. The format follows
   classify, is still merged by hand.
 
 ### Added
+
+- Optional service groups through `compose.profiles.yaml`, preserving the
+  full stack by default. Persist the selected groups in `.env` so backups and
+  deployments use the same selection.
+- An opt-in Tdarr login override with private server and internal-node keys,
+  an authenticated health check and migration instructions.
 
 - **torrent-watch**: adds new torrents from a model index to qBittorrent by
   itself, for the watch terms you set, within limits per torrent and in total

@@ -12,7 +12,8 @@ setting marked required stops `docker compose` with an error naming it when it's
 
 | Setting | Required | Meaning |
 | --- | --- | --- |
-| `COMPOSE_FILE` | no | Include the GPU override on a host with an NVIDIA GPU ([GPU](#gpu)). Leave unset without one. |
+| `COMPOSE_FILE` | no | Colon-separated Compose files, with `compose.yaml` first. Optional overrides enable the GPU, service profiles or Tdarr login ([installing](installing.md#optional-service-groups)). |
+| `COMPOSE_PROFILES` | no | Comma-separated service groups when `compose.profiles.yaml` is included: `media`, `printing`, `recipes`, `torrents`, `logs`, `autoheal`. Without that override, every service starts. |
 | `TZ` | yes | Time zone (tz database name) for logs and schedules. |
 | `PUID`, `PGID` | yes | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; both must stay at `1000` for the current hardened Spoolman image. Storage ownership and permissions must let `1000:1000` read and write the media library, `TORRENTS_PATH` and application data. |
 | `MEDIA_PATH` | yes | Host path of the media library. Never backed up by this stack. |
@@ -34,6 +35,7 @@ its own gitignored `<service>.env` (mode `600`) with a committed `<service>.env.
 
 | File | Setting | Meaning |
 | --- | --- | --- |
+| `tdarr.env` (required only by `compose.tdarr-auth.yaml`; template [`tdarr.env.example`](../tdarr.env.example)) | `seededApiKey`, `apiKey` | The same private key for the server and internal node; also used by the authenticated health check. See [Tdarr login](installing.md#tdarr-login). |
 | `autoheal.env` (optional; template [`autoheal.env.example`](../autoheal.env.example)) | `WEBHOOK_URL` | Where autoheal posts a notice for each restart (a Discord channel webhook works as is). A secret: anyone with it can post to the channel. |
 | `spoolman.env` (optional; template [`spoolman.env.example`](../spoolman.env.example)) | `SPOOLMAN_DB_TYPE`, `SPOOLMAN_DB_HOST`, `SPOOLMAN_DB_PORT`, `SPOOLMAN_DB_NAME`, `SPOOLMAN_DB_USERNAME`, `SPOOLMAN_DB_QUERY` | Spoolman's database connection settings for a PostgreSQL server. None may be empty; without the file, SQLite in its folder. The password is a file, below ([installing.md](installing.md#spoolmans-database)). |
 | `social-to-mealie.env` (needed for imports; template [`social-to-mealie.env.example`](../social-to-mealie.env.example)) | `OPENAI_API_KEY`, `MEALIE_API_KEY`, `TRANSCRIPTION_MODEL`, `TEXT_MODEL` | social-to-mealie's OpenAI API key and Mealie API token (both secrets), and the OpenAI speech-to-text and chat models. Without the file it starts, but every import fails ([installing.md](installing.md#social-to-mealie)). |

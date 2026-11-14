@@ -25,6 +25,10 @@ service-level agreement, and review may take a while. Releases are tagged
 
 You need git, Python 3.14, and Docker with Compose v2.
 
+For local hooks, install `pre-commit` and run `pre-commit install`, then
+`pre-commit run --all-files`. The Markdown hook uses the pinned Node 24 runtime
+in `.pre-commit-config.yaml`; the first run downloads it, so it needs network access.
+
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
 # creates .venv with the hash-pinned tools, runs the checker's tests with coverage

@@ -18,5 +18,6 @@ rules:
     min-spaces-from-content: 1
 
 ignore: |
+  .agent/
   .venv/
   appdata/
