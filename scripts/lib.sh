@@ -5,7 +5,7 @@
 # Reads and writes the services' data in throwaway containers; pinned like every other image (bumped by hand, see
 # docs/dependencies.md).
 # shellcheck disable=SC2034 # used by the scripts that source this file
-busybox=busybox:1.38.0@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
+busybox=busybox:1.38.0@sha256:a46257e06c82ad85242d0d38077d0a52d9896389ca60a1a59d3463db586e5fa4
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 
