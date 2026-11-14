@@ -1,0 +1,23 @@
+# Opt-in service selection; the base Compose file still starts every service by default.
+# Include this file in COMPOSE_FILE and persist the selected groups in COMPOSE_PROFILES in .env.
+services:
+  tdarr:
+    profiles: [media]
+  spoolman:
+    profiles: [printing]
+  ams:
+    profiles: [printing]
+  mealie:
+    profiles: [recipes]
+  social-to-mealie:
+    profiles: [recipes]
+  qbittorrent-direct:
+    profiles: [torrents]
+  torrent-watch:
+    profiles: [torrents]
+  dozzle-agent:
+    profiles: [logs]
+  autoheal:
+    profiles: [autoheal]
+  socket-proxy:
+    profiles: [autoheal]

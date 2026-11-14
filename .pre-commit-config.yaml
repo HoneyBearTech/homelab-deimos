@@ -1,3 +1,6 @@
+default_language_version:
+  node: 24.22.3
+
 exclude: '^\.agent/'
 
 repos:
@@ -20,8 +23,8 @@ repos:
     hooks:
       - id: yamllint
         args: [--strict, -c, .yamllint.yml]
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: 2491238703a5d3415bb2b7ff11388bf775372f29 # v0.10.0
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 745eface02aef23e168a8afb6b5737818efbea95 # v0.11.0.1
     hooks:
       - id: shellcheck
   - repo: https://github.com/astral-sh/ruff-pre-commit

@@ -1,0 +1,14 @@
+# Opt-in Tdarr login. Create tdarr.env first (tdarr.env.example; docs/installing.md#tdarr-login).
+services:
+  tdarr:
+    environment:
+      auth: "true"
+    env_file:
+      - path: tdarr.env
+        required: true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          test -n "$${apiKey}" &&
+          curl -fsS -o /dev/null -H "x-api-key: $${apiKey}" http://localhost:8265/api/v2/status

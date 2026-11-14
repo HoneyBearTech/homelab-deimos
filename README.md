@@ -90,6 +90,9 @@ docker compose config --quiet
 docker compose up -d --wait
 ```
 
+For a smaller installation, select [optional service groups](docs/installing.md#optional-service-groups).
+Tdarr's own login can be enabled through a separate [authentication override](docs/installing.md#tdarr-login).
+
 ## Usage
 
 ```sh

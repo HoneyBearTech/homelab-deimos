@@ -32,7 +32,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/scripts/lib.sh/"],
-      "matchStrings": ["(?m)^busybox=(?<depName>busybox):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})$"],
+      "matchStrings": ["(?:^|\\r\\n|\\r|\\n)busybox=(?<depName>busybox):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})(?:\\r\\n|\\r|\\n|$)"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "busybox",
       "versioningTemplate": "docker"
@@ -40,7 +40,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": ["/scripts/smoke-stack.sh/"],
-      "matchStrings": ["(?m)^mealie_db_image=(?<depName>postgres):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})$"],
+      "matchStrings": ["(?:^|\\r\\n|\\r|\\n)mealie_db_image=(?<depName>postgres):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})(?:\\r\\n|\\r|\\n|$)"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "postgres",
       "versioningTemplate": "docker"

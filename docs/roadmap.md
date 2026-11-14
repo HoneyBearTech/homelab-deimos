@@ -21,9 +21,15 @@ file changes with them, in the same pull request.
   never recreates a service a backup has stopped ([upgrading.md](upgrading.md#backing-up)).
 - The OpenSSF Best Practices **Passing** and **Silver** badges, and **OSPS Baseline** Levels 1 and 2.
 
+## Done (November 2026)
+
+- Optional services are available through `compose.profiles.yaml`; the base stack still starts every service.
+
 ## Now
 
-- `compose.yaml` currently pins Tdarr 3.06.00, with its own login disabled; decide whether to enable that login.
+- Tdarr login is available through `compose.tdarr-auth.yaml`; enabling it on the host requires a private key in
+  `tdarr.env`, an initial sign-in and verification that the internal node connects. The base stack retains the
+  existing LAN and reverse-proxy access controls until that migration is completed.
 
 ## Next: safe upgrades and rebuilds
 
@@ -33,7 +39,6 @@ file changes with them, in the same pull request.
 ## Later
 
 - A read-only root filesystem for Tdarr too, if its image ever allows one.
-- Optional services as Compose profiles, so a smaller installation can leave them out.
 
 ## Security and project health
 

@@ -9,6 +9,11 @@ digest. The one exception is torrent-watch, a standard-library script in this re
 
 ## Services
 
+The base file starts the full stack. Optional overrides select
+[service groups](installing.md#optional-service-groups), enable
+[Tdarr login](installing.md#tdarr-login), or reserve the GPU. Each override is
+included after `compose.yaml` in `COMPOSE_FILE` in the installation's `.env`.
+
 | Service | Image source | Role |
 | --- | --- | --- |
 | Tdarr (server with an internal node) | the project's own image | Scans the media library and runs transcode and health-check flows on it, on the GPU (NVENC/NVDEC) or the CPU; other machines can join as extra nodes |
