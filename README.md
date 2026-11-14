@@ -44,7 +44,8 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 - **qBittorrent**: a torrent client for files you're free to share: it makes torrents, seeds them, and downloads
   from torrent files and magnet links
 - **torrent-watch**: this repository's own small script: it adds new torrents from a model index to qBittorrent by
-  itself, within limits you set ([installing](docs/installing.md#torrent-watch)); with no watch terms it does nothing
+  itself, within limits you set ([installing](docs/installing.md#torrent-watch)); with no watch terms and at-risk
+  selection disabled it does nothing
 - **autoheal**: restarts any of them whose health check fails, through a socket proxy that only lets it list,
   inspect, restart and stop containers
 - **A Dozzle agent**: serves the containers' logs to the homelab's Dozzle on another host, which shows every
@@ -62,15 +63,17 @@ a commit in `main`.
 
 ```sh
 git clone https://github.com/HoneyBearTech/homelab-deimos.git && cd homelab-deimos
-cp .env.example .env && chmod 600 .env    # then set TZ, PUID/PGID, the paths and the two *_PUBLIC_URLs
-. ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-  "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-  "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
-docker compose up -d --wait
+cp .env.example .env && chmod 600 .env    # then set TZ, the paths and the two *_PUBLIC_URLs; keep PUID/PGID at 1000
+. ./.env && mkdir -p "$CONFIG_ROOT/tdarr/config" "$CONFIG_ROOT/tdarr/server" "$CONFIG_ROOT/tdarr/logs" \
+  "$CONFIG_ROOT/tdarr/transcode" "$CONFIG_ROOT/spoolman/config" "$CONFIG_ROOT/haspelsync/config" \
+  "$CONFIG_ROOT/haspelsync/logs" "$CONFIG_ROOT/mealie/config" "$CONFIG_ROOT/qbittorrent-direct/config" \
+  "$CONFIG_ROOT/torrent-watch/config" "$TORRENTS_PATH"
+# Prepare the required secret files and check storage access before starting, as described below.
 ```
 
 The Dozzle agent needs its certificate and key first ([installing](docs/installing.md#dozzles-certificate)),
-Mealie the URL of its database ([installing](docs/installing.md#mealies-database)), and social-to-mealie its API keys
+Mealie the URL of its database ([installing](docs/installing.md#mealies-database)), and Spoolman its database
+password file, empty with SQLite ([installing](docs/installing.md#spoolmans-database)). social-to-mealie needs its API keys
 ([installing](docs/installing.md#social-to-mealie)). qBittorrent's first sign-in and its port are in
 [installing](docs/installing.md#qbittorrent). torrent-watch needs qBittorrent's password in a file before it can be
 created ([installing](docs/installing.md#torrent-watch)).
@@ -78,7 +81,14 @@ created ([installing](docs/installing.md#torrent-watch)).
 For Tdarr to use the GPU, the host needs the NVIDIA driver, the NVIDIA Container Toolkit 1.18+ and Docker Engine
 29.2+ (or Tdarr loses the GPU at every `systemctl daemon-reload`), and `.env` needs `COMPOSE_FILE` set to include
 the GPU override ([installing](docs/installing.md#the-gpu-and-docker-292)). The full
-steps are in the [quick start](docs/quick-start.md).
+steps are in the [quick start](docs/quick-start.md). The current hardened Spoolman image requires `PUID` and
+`PGID` to stay at `1000`; ensure storage ownership and permissions allow `1000:1000` to use the configured paths.
+Once these prerequisites are ready:
+
+```sh
+docker compose config --quiet
+docker compose up -d --wait
+```
 
 ## Usage
 
@@ -105,7 +115,7 @@ Settings come from `.env` (template [`.env.example`](.env.example)), which holds
 | --- | --- |
 | `TZ` | Time zone |
 | `COMPOSE_FILE` | Includes the GPU override on a host with an NVIDIA GPU |
-| `PUID`, `PGID` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; Tdarr's must be able to read and write the media library, and qBittorrent's `TORRENTS_PATH` |
+| `PUID`, `PGID` | User and group Tdarr, Spoolman, the AMS app, Mealie, qBittorrent and torrent-watch run as; both must stay at `1000` for the current hardened Spoolman image. Storage ownership and permissions must let `1000:1000` read and write the media library, `TORRENTS_PATH` and application data |
 | `MEDIA_PATH` | The media library Tdarr processes (never backed up by this stack) |
 | `TORRENTS_PATH` | The folder qBittorrent keeps its torrents' files in, the only files it can reach (never backed up by this stack) |
 | `CONFIG_ROOT` | Every app's data, one folder per app (`CONFIG_ROOT/<app>/config`, …); never inside `/var/lib/docker/volumes` |

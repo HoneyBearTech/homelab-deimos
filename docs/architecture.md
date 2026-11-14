@@ -20,7 +20,7 @@ digest. The one exception is torrent-watch, a standard-library script in this re
 | [Mealie](https://github.com/mealie-recipes/mealie) | the project's own image | Recipes (typed in, or imported from a recipe's web page), meal plans and shopping lists, for the household's accounts; web UI and REST API. Its database is PostgreSQL on a database server outside this stack |
 | [social-to-mealie](https://github.com/GerardPolloRebozado/social-to-mealie) | the project's own image | Turns a recipe posted on Instagram, TikTok, YouTube Shorts and similar sites into a Mealie recipe: fetches the post (yt-dlp, or gallery-dl for picture posts), has OpenAI's API transcribe its audio and write the recipe, and posts it to Mealie through Mealie's API. Keeps no data; no login of its own |
 | [qBittorrent](https://www.qbittorrent.org/) | LinuxServer.io's image | A torrent client for files you're free to share: makes torrents, seeds them, and downloads from torrent files and magnet links; web UI and REST API, with its own login. Only torrent-watch talks to it, and it reaches only its own folder |
-| torrent-watch | [this repository's script](../scripts/torrent_watch.py), in Python's own image | Every half hour, runs each watch term through a model index's search and adds what's new to qBittorrent, within the limits in `.env`, and switches every finished torrent there to forced seeding. No ports; with no watch terms it does nothing |
+| torrent-watch | [this repository's script](../scripts/torrent_watch.py), in Python's own image | Every half hour, selects new torrents by watch terms or items the index counts as at risk, within the limits in `.env`, and switches every finished torrent in qBittorrent to forced seeding. Builds missing torrents and repairs stalled ones with bounded local work. No ports; idles only when watch terms and at-risk selection are both disabled |
 
 Other services on the same host (a local LLM chat and model server, monitoring agents, a Docker management
 agent) come from their own projects; this stack doesn't include or manage them.
@@ -109,10 +109,15 @@ only pulls; nothing connects in to it to deploy.
 | `compose.yaml` | The stack |
 | `compose.gpu.yaml` | Tdarr's GPU reservation, for hosts with an NVIDIA GPU |
 | `.env.example` | Template for the settings |
+| `autoheal.env.example`, `backup.env.example`, `social-to-mealie.env.example`, `spoolman.env.example` | Templates for optional environment files |
+| `renovate.json` | Dependency-update configuration |
 | `scripts/check_compose.py` | The policy check and SBOM generator (standard-library Python) |
 | `scripts/backup.sh`, `scripts/restore.sh` | Backup and restore of every service's data, never the media library |
+| `scripts/lib.sh` | Shared backup and restore helpers |
+| `scripts/torrent_watch.py` | Torrent selection, local rebuilds and repairs |
 | `scripts/scheduled-backup.sh`, `deploy/systemd/` | Nightly backup, copied off the host with rsync and pruned, reported to an Uptime Kuma push monitor |
 | `scripts/smoke-test.sh` | Starts the stack in isolation, waits for health, and round-trips a backup |
-| `tests/` | The checker's tests, with JSON fixtures |
+| `scripts/smoke-stack.sh` | Shared isolated-stack setup for the smoke test |
+| `tests/` | Policy checks with JSON fixtures, backup-stop recovery, deployment locking, settings and watcher unit tests |
 | `docs/` | This documentation |
-| `.github/` | CI, release and security workflows, Renovate, templates |
+| `.github/` | CI, release and security workflows, templates |

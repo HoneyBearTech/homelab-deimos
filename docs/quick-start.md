@@ -20,7 +20,8 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    cp .env.example .env && chmod 600 .env
    ```
 
-   In `.env`, set `TZ`, `PUID`/`PGID` (a user that can read and write your media library), `MEDIA_PATH`,
+   In `.env`, keep `PUID`/`PGID` at `1000:1000` for the current hardened Spoolman image. Ensure storage ownership
+   and permissions let that user/group access the media, torrent and application paths. Set `TZ`, `MEDIA_PATH`,
    `TORRENTS_PATH` (qBittorrent's own folder, outside the media library), `CONFIG_ROOT` (where the apps keep their data; never inside `/var/lib/docker/volumes`),
    `SPOOLMAN_PUBLIC_URL` and `MEALIE_PUBLIC_URL`. With an NVIDIA GPU, configure `COMPOSE_FILE` to include the GPU override. Every setting
    is described in [interfaces.md](interfaces.md#settings).
@@ -29,9 +30,10 @@ Toolkit (1.18 or later) and Docker Engine 29.2 or later ([installing.md](install
    ([where data lives](installing.md#where-data-lives)):
 
    ```sh
-   . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-     "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
+   . ./.env && mkdir -p "$CONFIG_ROOT/tdarr/config" "$CONFIG_ROOT/tdarr/server" "$CONFIG_ROOT/tdarr/logs" \
+     "$CONFIG_ROOT/tdarr/transcode" "$CONFIG_ROOT/spoolman/config" "$CONFIG_ROOT/haspelsync/config" \
+     "$CONFIG_ROOT/haspelsync/logs" "$CONFIG_ROOT/mealie/config" "$CONFIG_ROOT/qbittorrent-direct/config" \
+     "$CONFIG_ROOT/torrent-watch/config" "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs the certificate and key it shares with your Dozzle hub, in

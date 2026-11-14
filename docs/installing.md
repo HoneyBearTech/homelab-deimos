@@ -15,7 +15,8 @@ The [quick start](quick-start.md) is the short version of this page.
   and transcodes on the CPU.
 - A user in the `docker` group to run `docker compose`. Membership is equivalent to root on the host, so keep
   that group small.
-- The media library mounted on the host (local disk or a network share) and writable by `PUID`/`PGID`.
+- Keep `PUID` and `PGID` at `1000` for the current hardened Spoolman image. The media library mounted on the
+  host (local disk or a network share), torrent folder and application data must be readable and writable by `1000:1000`.
 - Disk for `CONFIG_ROOT`, which holds Tdarr's transcode cache too: room for several of your largest files at once,
   ideally on fast local disk rather than the network share.
 - `age` if the backups are copied off the host encrypted ([Scheduled backups](#scheduled-backups)).
@@ -69,7 +70,9 @@ database in `CONFIG_ROOT/<app>/config`, and any other folder it needs beside tha
 | qBittorrent's password, for torrent-watch (not backed up; [below](#torrent-watch)) | `CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password` | `/run/secrets/qbittorrent_password`, read-only |
 | The Dozzle agent's certificate and key (owned by root, not backed up; [below](#dozzles-certificate)) | `CONFIG_ROOT/dozzle/certs` | `/run/secrets/dozzle_cert`, `/run/secrets/dozzle_key`, read-only |
 
-The folders must be readable and writable by `PUID:PGID`. Tdarr's transcode cache needs room for several of your
+The folders must be readable and writable by `PUID:PGID` (`1000:1000` for the current hardened Spoolman image).
+Creating them as your user is sufficient only when their resulting ownership and permissions allow that access.
+Tdarr's transcode cache needs room for several of your
 largest files at once, so `CONFIG_ROOT` should be on a disk with that much space. Every mount is listed in
 [interfaces.md](interfaces.md#volumes-and-mounts).
 
@@ -84,12 +87,13 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
 1. Clone the repository (or download a release's source archive and verify it,
    [verifying-releases.md](verifying-releases.md)).
 2. Create `.env` from `.env.example` (mode `600`) and set every value.
-3. Create the folders as your user (so Docker doesn't create them owned by root), then `docker compose up -d`:
+3. Prepare the folders with ownership and permissions that allow `1000:1000` access, then the required secret files:
 
    ```sh
-   . ./.env && mkdir -p "$CONFIG_ROOT"/tdarr/{config,server,logs,transcode} "$CONFIG_ROOT"/spoolman/config \
-     "$CONFIG_ROOT"/haspelsync/{config,logs} "$CONFIG_ROOT"/mealie/config "$CONFIG_ROOT"/qbittorrent-direct/config \
-     "$CONFIG_ROOT"/torrent-watch/config "$TORRENTS_PATH"
+   . ./.env && mkdir -p "$CONFIG_ROOT/tdarr/config" "$CONFIG_ROOT/tdarr/server" "$CONFIG_ROOT/tdarr/logs" \
+     "$CONFIG_ROOT/tdarr/transcode" "$CONFIG_ROOT/spoolman/config" "$CONFIG_ROOT/haspelsync/config" \
+     "$CONFIG_ROOT/haspelsync/logs" "$CONFIG_ROOT/mealie/config" "$CONFIG_ROOT/qbittorrent-direct/config" \
+     "$CONFIG_ROOT/torrent-watch/config" "$TORRENTS_PATH"
    ```
 
    The Dozzle agent also needs its certificate and key in `CONFIG_ROOT/dozzle/certs`, owned by root
@@ -98,7 +102,12 @@ largest files at once, so `CONFIG_ROOT` should be on a disk with that much space
    ([below](#spoolmans-database)). social-to-mealie needs its API keys in `social-to-mealie.env` before it can import
    anything ([below](#social-to-mealie)), and qBittorrent a password of your own at its first sign-in
    ([below](#qbittorrent)), which torrent-watch needs in a file before its container can be created
-   ([below](#torrent-watch)).
+   ([below](#torrent-watch)). Once the prerequisites are ready, resolve the configuration and start:
+
+   ```sh
+   docker compose config --quiet
+   docker compose up -d --wait
+   ```
 
 **Adopting existing containers.** If the services already run on the host (from Portainer stacks or another
 Compose project), move their existing data into the folders above instead of starting empty: stop the old
@@ -307,8 +316,7 @@ added again.
 
 Once any torrent in qBittorrent has finished, the next poll switches it to forced seeding, so that qBittorrent's queue
 limits don't stop it seeding. That covers every torrent there, your own uploads and what you add by hand included, and
-what is already seeding at its first poll, though only while it has a watch term to run. It happens once per torrent:
-one you switch back or stop stays that way. Stopping for lack of space still touches only its own category. Forced
+what is already seeding at its first poll, though only while watch terms or at-risk selection are enabled. It happens once per torrent: one you switch back or stop stays that way. Stopping for lack of space still touches only its own category. Forced
 torrents still count toward a global upload limit, if
 you've set one ([above](#qbittorrent)), so that is what leaves room for everything else on your connection.
 
@@ -338,13 +346,15 @@ expect it to stop at your limits long before it runs out of torrents: the list c
 the whole list every 6 hours, about 100 requests over several minutes, and adds from that answer at each poll. The index's
 list has ended at different lengths from one run to the next, so what it sees may not be everything at risk. Each is added
 from the index's own `.torrent` file, which carries its metadata, after checking it is the torrent the listing names. One
-with no `.torrent` file on the index is left out until it has one: with no seeders, no peer could give it its metadata
-either. With no seeders the data comes from the index's web seed, so speeds vary. The index's own docs say its web seed
-stalls plain BitTorrent v1 torrents with several files at 99 %; one that never finishes keeps counting toward the limits
+with no `.torrent` file on the index can instead be [built here](#building-a-torrent), one eligible model at a time,
+within the same limits. For an existing torrent with no seeders the data comes from the index's web seed, so speeds vary.
+The index's own docs say its web seed stalls plain BitTorrent v1 torrents with several files at 99 %; one that never finishes keeps counting toward the limits
 until you remove it.
 
 **A torrent of its own that has found no metadata in a day** (a magnet link nobody can complete) is removed from
 qBittorrent. Nothing of it was downloaded, so nothing is lost, and its room under the limits is free again.
+
+<a id="building-a-torrent"></a>
 
 **A torrent at risk with no `.torrent` file gets one built here**, one model at a time, with torrents at risk asked for.
 torrent-watch downloads the files its listing names from the model's source (Hugging Face) at the revision the listing
