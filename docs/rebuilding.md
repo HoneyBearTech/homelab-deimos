@@ -85,7 +85,9 @@ create the apps' folders under `CONFIG_ROOT` as your user ([installing.md](insta
 the Dozzle agent's certificate and key back from your password manager, owned by root
 ([installing.md](installing.md#dozzles-certificate)), and write Mealie's database URL again
 ([installing.md](installing.md#mealies-database), step 2; with a new password for its login if the old one is lost),
-and qBittorrent's password for torrent-watch ([installing.md](installing.md#torrent-watch), step 1):
+Spoolman's `CONFIG_ROOT/spoolman/secrets/db_password` ([installing.md](installing.md#spoolmans-database), empty
+for SQLite or supplied securely for external PostgreSQL), and qBittorrent's password for torrent-watch
+([installing.md](installing.md#torrent-watch), step 1):
 they aren't in the backup, and without them the restore can't create those containers. Then:
 
 ```sh
@@ -113,6 +115,8 @@ its spools, and Mealie its recipes, with their images.
 ## What the backup doesn't bring back
 
 - **The media library**: it lives on its own storage, protected there.
+- **Torrent payloads**: restore `TORRENTS_PATH` independently so existing torrents can resume; both qBittorrent
+  and torrent-watch exclude their `/downloads` mount from backups.
 - **The Dozzle agent's certificate and key** (`CONFIG_ROOT/dozzle/certs`): never backed up; they come from your
   password manager (step 4).
 - **Mealie's database and its URL**: the database is on its server, backed up there; the URL

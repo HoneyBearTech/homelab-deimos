@@ -23,8 +23,7 @@ file changes with them, in the same pull request.
 
 ## Now
 
-- Tdarr 3, by hand after reading its release notes (its engine changes); decide then whether to turn on Tdarr's
-  own login.
+- `compose.yaml` currently pins Tdarr 3.06.00, with its own login disabled; decide whether to enable that login.
 
 ## Next: safe upgrades and rebuilds
 

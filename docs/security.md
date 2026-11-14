@@ -71,9 +71,8 @@ transcoding with these settings is checked on the host, not in CI.
 | autoheal | none | yes | Only talks to socket-proxy |
 | socket-proxy | none | yes (`/run`, `/tmp` in memory) | Only reads the socket |
 
-The AMS app, the Dozzle agent, autoheal and socket-proxy run as root inside their containers, since their images
-offer nothing else. Without capabilities that root can only reach what it owns (the AMS app keeps
-`DAC_OVERRIDE` for its two directories).
+The AMS app runs as `PUID:PGID` with no added capabilities. The Dozzle agent, autoheal and socket-proxy run as
+root inside their containers with no added capabilities; that root can only reach what it owns.
 
 ## What it doesn't protect
 
@@ -141,6 +140,8 @@ offer nothing else. Without capabilities that root can only reach what it owns (
 | Printer access codes (in plain text in `printers.json`) | the AMS app's `/app/printers` | same |
 | autoheal's webhook URL | `autoheal.env` (gitignored, mode `600`) | same |
 | Spoolman's database password (when its database is on a server) | `CONFIG_ROOT/spoolman/secrets/db_password` (`PUID:PGID`, mode `600`) | same, and the stack's backups |
+| Mealie's database URL | `CONFIG_ROOT/mealie/secrets/database_url` (`PUID:PGID`, mode `600`) | the repository, `.env`, and the stack's backups |
+| qBittorrent's password for torrent-watch | `CONFIG_ROOT/torrent-watch/secrets/qbittorrent_password` (`PUID:PGID`, mode `600`) | the repository, `.env`, and the stack's backups |
 | The Dozzle agent's key, shared with the Dozzle hub | `CONFIG_ROOT/dozzle/certs/dozzle_key.pem` (root, mode `600`) and a password manager | same, and the stack's backups |
 | The backup push monitor's URL | `backup.env` (gitignored, mode `600`) | same |
 | The key for the backup server | the backup user's `~/.ssh` on the host | same |
