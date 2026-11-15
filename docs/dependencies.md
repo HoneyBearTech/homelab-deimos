@@ -33,7 +33,7 @@ its release notes.
 | Linters and scanners used only by GitHub CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest; Renovate regex manager | Docker |
 | GitLab CI images | [`.gitlab-ci.yml`](../.gitlab-ci.yml) | version tag and digest; reviewed by hand | Docker |
 | GitHub Actions | [`.github/workflows/`](../.github/workflows/) | full commit SHA (version in a comment) | GitHub Actions |
-| Pre-commit hooks | [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) | full commit SHA (version in a comment); updated by hand | `pre-commit` |
+| Pre-commit hooks | [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) | full commit SHA (version in a comment); Renovate regex manager | `pre-commit` |
 
 Each release will carry a CycloneDX SBOM listing every service's image and digest
 ([verifying-releases.md](verifying-releases.md)).
@@ -54,10 +54,11 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 - **Runner label major updates need approval on the Dependency Dashboard.** A move such as `ubuntu-24.04` to
   `ubuntu-26.04` can't pass while the pinned actionlint doesn't know the new label, so Renovate lists it on the
   dashboard and opens it only when approved there, once actionlint accepts the label.
-- **Pre-commit hooks are not tracked by Renovate.** `.pre-commit-config.yaml` pins each hook as a full commit SHA
-  with the version in a comment. Renovate's pre-commit manager reads only the SHA, compares it as if it were a
-  version, and would replace the pin with a bare tag (and propose older versions): it can't keep the SHA and the
-  comment. The hooks stay pinned by hand, so check them when the matching tool moves.
+- **Pre-commit hooks and their Node version are tracked by Renovate** through two regex managers for
+  `.pre-commit-config.yaml` (Renovate's own pre-commit manager can't keep a SHA pin with a version comment, so it
+  stays off). Each hook is `rev: <full commit SHA> # <version>`; an update changes both the SHA and the version
+  comment, and a hook never moves to a tag without its SHA. The `default_language_version` Node release is tracked
+  too. These updates follow the same grouping, `major` label and 3-day age as the rest.
 - Narrow Renovate regex managers track the version and digest for busybox in `scripts/lib.sh`, the PostgreSQL
   smoke-test image in `scripts/smoke-stack.sh`, and actionlint, gitleaks and Trivy in GitHub workflow `run:` commands;
   each matches one file by its exact path.
