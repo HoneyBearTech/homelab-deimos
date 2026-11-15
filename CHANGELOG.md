@@ -110,6 +110,11 @@ All notable changes to homelab-deimos are documented here. The format follows
 - Local hooks pin the Markdown linter's Node runtime and use the native,
   hash-pinned shell checker, so shell checks need no Docker daemon.
 - Refresh the pinned BusyBox, PostgreSQL, socket-proxy and autoheal digests.
+- Renovate waits 3 days after a release before proposing an update (not for
+  security fixes), asks for approval on the Dependency Dashboard before a major
+  runner-image update, and matches each helper-image file by its exact path. It
+  now also tracks the pre-commit hooks (commit SHA and version comment) and
+  their Node version.
 - Helper-image dependency patterns use explicit line boundaries, supported
   by both the native regex engine and its fallback.
 
