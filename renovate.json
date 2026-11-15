@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":dependencyDashboard"],
-  "enabledManagers": ["docker-compose", "pip_requirements", "github-actions", "custom.regex", "pre-commit"],
+  "enabledManagers": ["docker-compose", "pip_requirements", "github-actions", "custom.regex"],
   "automerge": false,
   "schedule": ["before 6am on monday"],
   "timezone": "America/Chicago",
@@ -77,6 +77,21 @@
       "datasourceTemplate": "docker",
       "depNameTemplate": "aquasec/trivy",
       "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
+      "matchStrings": ["repo: https://github\\.com/(?<depName>[^\\s]+)\\s+rev: (?<currentDigest>[a-f0-9]{40}) # (?<currentValue>v?\\d[^\\s]*)"],
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver-coerced"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
+      "matchStrings": ["default_language_version:\\s+node: (?<currentValue>\\d[^\\s]*)"],
+      "datasourceTemplate": "node-version",
+      "depNameTemplate": "node",
+      "versioningTemplate": "node"
     }
   ]
 }
