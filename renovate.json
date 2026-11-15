@@ -7,8 +7,12 @@
   "timezone": "America/Chicago",
   "labels": ["dependencies"],
   "osvVulnerabilityAlerts": true,
+  "minimumReleaseAge": "3 days",
+  "minimumReleaseAgeBehaviour": "timestamp-optional",
+  "internalChecksFilter": "strict",
   "vulnerabilityAlerts": {
-    "labels": ["security"]
+    "labels": ["security"],
+    "minimumReleaseAge": null
   },
   "packageRules": [
     {
@@ -18,6 +22,11 @@
     {
       "matchUpdateTypes": ["major"],
       "addLabels": ["major"]
+    },
+    {
+      "matchDatasources": ["github-runners"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
     },
     {
       "matchPackageNames": ["github/codeql-action*"],
