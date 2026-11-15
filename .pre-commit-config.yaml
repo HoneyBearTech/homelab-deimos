@@ -15,11 +15,11 @@ repos:
         args: [--allow-multiple-documents]
       - id: check-added-large-files
   - repo: https://github.com/gitleaks/gitleaks
-    rev: fb5d707e08fe0d2578b155458fdd53b6782dcab2 # v8.29.1 peeled commit
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e # v8.30.1 peeled commit
     hooks:
       - id: gitleaks
   - repo: https://github.com/adrienverge/yamllint
-    rev: 79a6b2b1392eaf49cdd32ac4f14be1a809bbd8f7 # v1.37.1
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530 # v1.38.0
     hooks:
       - id: yamllint
         args: [--strict, -c, .yamllint.yml]
@@ -28,12 +28,12 @@ repos:
     hooks:
       - id: shellcheck
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: f9351c924055bf6c7b4a4670237d3ce141e9f57c # v0.14.0
+    rev: c0f278f1254ccc8fb09676bcdb8d847e7db493e5 # v0.17.4
     hooks:
       - id: ruff-check
       - id: ruff-format
   - repo: https://github.com/ansible/ansible-lint
-    rev: fac2489f3e4ccffa83a40b839770abbf4ab52327 # v26.10.0
+    rev: b74fb6f73d234bf92672372cb1c10768e4018d16 # v26.11.0
     hooks:
       - id: ansible-lint
         files: '^(ansible|playbooks|roles)/.*\.ya?ml$'
