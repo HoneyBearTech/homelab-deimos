@@ -2,7 +2,7 @@
 
 Decisions made while maintaining homelab-deimos, with the reason and the alternatives turned down.
 
-## 2026-11-15: Renovate set-up (deimos-renovate, [#96](https://github.com/HoneyBearTech/homelab-deimos/pull/96))
+## 2026-11-15: Renovate set-up (deimos-renovate, [#98](https://github.com/HoneyBearTech/homelab-deimos/pull/98))
 
 - **Pre-commit hooks are tracked by regex managers, not Renovate's pre-commit manager.**
   - Why: a dry run of the built-in manager read the SHA as the version and ignored the `# vX.Y.Z` comment. It proposed bare tags with no digest, which would drop the SHA pins, and even downgrades such as gitleaks to v5.0.1. The regex manager reads the SHA as the digest and the comment as the version, so an update changes both.
