@@ -56,9 +56,11 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
   dashboard and opens it only when approved there, once actionlint accepts the label.
 - **Pre-commit hooks and their Node version are tracked by Renovate** through two regex managers for
   `.pre-commit-config.yaml` (Renovate's own pre-commit manager can't keep a SHA pin with a version comment, so it
-  stays off). Each hook is `rev: <full commit SHA> # <version>`; an update changes both the SHA and the version
-  comment, and a hook never moves to a tag without its SHA. The `default_language_version` Node release is tracked
-  too. These updates follow the same grouping, `major` label and 3-day age as the rest.
+  stays off). Each hook must be written as `rev: <full commit SHA> # <version>` on one line: the manager only
+  recognizes that form, and an update changes both the SHA and the version comment. A hook without the version
+  comment is not tracked and goes stale, so keep the comment when adding a hook. Pre-release tags (`-rc`, `-beta`)
+  are not proposed. The `default_language_version` Node release is tracked too. These updates follow the same
+  grouping, `major` label and 3-day age as the rest.
 - Narrow Renovate regex managers track the version and digest for busybox in `scripts/lib.sh`, the PostgreSQL
   smoke-test image in `scripts/smoke-stack.sh`, and actionlint, gitleaks and Trivy in GitHub workflow `run:` commands;
   each matches one file by its exact path.
