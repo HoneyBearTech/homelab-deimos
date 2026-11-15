@@ -104,6 +104,9 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 ### Changed
 
+- Update Mealie, the torrent-watch runtime, the log agent, the smoke database
+  and Python development dependencies to their current minor or patch versions.
+
 - Local hooks pin the Markdown linter's Node runtime and use the native,
   hash-pinned shell checker, so shell checks need no Docker daemon.
 - Refresh the pinned BusyBox, PostgreSQL, socket-proxy and autoheal digests.
@@ -258,6 +261,9 @@ All notable changes to homelab-deimos are documented here. The format follows
   the backup `scripts/restore.sh` reads, and that another key doesn't.
 
 ### Fixed
+
+- Give the smoke database's temporary data and socket directories to its
+  unprivileged user, so PostgreSQL patch updates can initialize their data.
 
 - The smoke test's restore into a removed config folder also runs for a stack
   built from this one where only one app keeps its data in

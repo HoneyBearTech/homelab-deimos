@@ -108,7 +108,7 @@ mealie_service=mealie
 mealie_db=mealie-test-db
 
 # The PostgreSQL the database server runs, pinned like busybox in lib.sh (bumped by hand, docs/dependencies.md).
-mealie_db_image=postgres:18.6-trixie@sha256:e3d24f6906d0760bf4da0dae872415391ededefad23fd471c47dc53b0ddf3c42
+mealie_db_image=postgres:18.7-trixie@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
 
 mealie_prepare() {
   local password
@@ -135,7 +135,11 @@ services:
     read_only: true
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
-    tmpfs: [/var/lib/postgresql, /var/run/postgresql, /tmp]
+    # Debian's postgres user is 999:999. Tmpfs hides the image's directory ownership, so set it explicitly.
+    tmpfs:
+      - /var/lib/postgresql:uid=999,gid=999,mode=0700
+      - /var/run/postgresql:uid=999,gid=999,mode=0755
+      - /tmp
     environment:
       POSTGRES_USER: mealie
       POSTGRES_DB: mealie
