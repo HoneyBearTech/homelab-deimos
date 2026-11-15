@@ -15,6 +15,8 @@ Start with the [README](../README.md) for what homelab-deimos is and how to run 
 | [Assurance case](assurance-case.md) | The threat model, trust boundaries and why the security requirements are met |
 | [Dependencies](dependencies.md) | How images and tools are chosen, pinned, tracked and patched |
 | [Roadmap](roadmap.md) | What's planned for the next year, and what homelab-deimos will not do |
+| [Pass map](pass-map.md) | Each pass of planned, reviewed work: when, what shipped, and its pull request |
+| [Decisions log](decisions-log.md) | Maintenance decisions, why they were made, and the alternatives turned down |
 
 Project policies live at the top of the repository: [CONTRIBUTING.md](../CONTRIBUTING.md),
 [GOVERNANCE.md](../GOVERNANCE.md), [SECURITY.md](../SECURITY.md), [SUPPORT.md](../SUPPORT.md),

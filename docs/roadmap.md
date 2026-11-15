@@ -24,6 +24,9 @@ file changes with them, in the same pull request.
 ## Done (November 2026)
 
 - Optional services are available through `compose.profiles.yaml`; the base stack still starts every service.
+- Renovate covers the pre-commit hooks and their Node version (full SHA pins kept), holds runner major updates
+  until actionlint knows the new label, and waits 3 days after a release before proposing it, with security
+  updates exempt ([dependencies.md](dependencies.md#tracking-dependencies)).
 
 ## Now
 
