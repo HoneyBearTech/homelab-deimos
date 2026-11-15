@@ -24,8 +24,10 @@
 
 ## What we'll change
 
-1. **Turn on the pre-commit manager** in `renovate.json`. Check: a local Renovate extraction dry run lists all nine
-   hook repositories and the node version, with their SHA pins and version comments.
+1. **Track the pre-commit hooks** in `renovate.json`. Check: a local Renovate extraction dry run lists all eight
+   hook repositories and the node version, with their SHA pins and version comments. *Changed during the work:*
+   Renovate's own pre-commit manager would replace each SHA pin with a bare tag (and proposed downgrades), so it
+   stays off; two regex managers track the hooks (SHA plus version comment) and the Node version instead.
 2. **Hold runner image major bumps** (`ubuntu` runners) for approval on the Dependency Dashboard, so they come back
    only when actionlint knows the new label. Check: config validator passes and the dry run shows the rule applying.
 3. **Add a three-day minimum release age** for updates, because a merge to `main` deploys to the host. Security
