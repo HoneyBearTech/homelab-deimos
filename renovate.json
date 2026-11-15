@@ -83,7 +83,7 @@
       "managerFilePatterns": ["/^\\.pre-commit-config\\.yaml$/"],
       "matchStrings": ["repo: https://github\\.com/(?<depName>[^\\s]+)\\s+rev: (?<currentDigest>[a-f0-9]{40}) # (?<currentValue>v?\\d[^\\s]*)"],
       "datasourceTemplate": "github-tags",
-      "versioningTemplate": "semver-coerced"
+      "versioningTemplate": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?:\\.(?<build>\\d+))?(?<prerelease>-.+)?$"
     },
     {
       "customType": "regex",
