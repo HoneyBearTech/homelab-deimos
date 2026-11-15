@@ -33,6 +33,7 @@ its release notes.
 | Linters and scanners used only by GitHub CI (actionlint, gitleaks, Trivy) | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scan.yml`](../.github/workflows/scan.yml) | version tag and digest; Renovate regex manager | Docker |
 | GitLab CI images | [`.gitlab-ci.yml`](../.gitlab-ci.yml) | version tag and digest; reviewed by hand | Docker |
 | GitHub Actions | [`.github/workflows/`](../.github/workflows/) | full commit SHA (version in a comment) | GitHub Actions |
+| Pre-commit hooks | [`.pre-commit-config.yaml`](../.pre-commit-config.yaml) | full commit SHA (version in a comment); updated by hand | `pre-commit` |
 
 Each release will carry a CycloneDX SBOM listing every service's image and digest
 ([verifying-releases.md](verifying-releases.md)).
@@ -44,8 +45,22 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
   updates remain separate and carry the `major` label. All update pull requests require manual review and merge.
   CodeQL init, analyze and upload-sarif actions are grouped so they move to one shared version. The global label is
   `dependencies`; vulnerability alert pull requests carry `security`, and OSV vulnerability alerts are enabled.
+- **Updates wait 3 days after release** (`minimumReleaseAge`), because a merge deploys. Vulnerability alert updates
+  are exempt and open at once. Renovate can only date a release when the registry reports it (Docker Hub, GitHub tags
+  and releases do; GHCR and unversioned tags such as `latest` don't), so `minimumReleaseAgeBehaviour` is
+  `timestamp-optional`: an update with no release date opens straight away rather than being held forever. A pending
+  update gets no branch or pull request until the 3 days have passed, and waits on the Dependency Dashboard
+  meanwhile (`internalChecksFilter` `strict`).
+- **Runner label major updates need approval on the Dependency Dashboard.** A move such as `ubuntu-24.04` to
+  `ubuntu-26.04` can't pass while the pinned actionlint doesn't know the new label, so Renovate lists it on the
+  dashboard and opens it only when approved there, once actionlint accepts the label.
+- **Pre-commit hooks are not tracked by Renovate.** `.pre-commit-config.yaml` pins each hook as a full commit SHA
+  with the version in a comment. Renovate's pre-commit manager reads only the SHA, compares it as if it were a
+  version, and would replace the pin with a bare tag (and propose older versions): it can't keep the SHA and the
+  comment. The hooks stay pinned by hand, so check them when the matching tool moves.
 - Narrow Renovate regex managers track the version and digest for busybox in `scripts/lib.sh`, the PostgreSQL
-  smoke-test image in `scripts/smoke-stack.sh`, and actionlint, gitleaks and Trivy in GitHub workflow `run:` commands.
+  smoke-test image in `scripts/smoke-stack.sh`, and actionlint, gitleaks and Trivy in GitHub workflow `run:` commands;
+  each matches one file by its exact path.
   GitLab CI images are pinned by version and digest but reviewed by hand. The Docker Hub `ubuntu` examples in
   rebuilding/quick-start docs are illustrative commands, not project automation or deployed images.
 - **Tdarr and qBittorrent remain manual.** Renovate excludes both from image updates: Tdarr can rewrite the media
