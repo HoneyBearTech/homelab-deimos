@@ -40,7 +40,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/scripts/lib.sh/"],
+      "managerFilePatterns": ["/^scripts/lib\\.sh$/"],
       "matchStrings": ["(?:^|\\r\\n|\\r|\\n)busybox=(?<depName>busybox):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})(?:\\r\\n|\\r|\\n|$)"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "busybox",
@@ -48,7 +48,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/scripts/smoke-stack.sh/"],
+      "managerFilePatterns": ["/^scripts/smoke-stack\\.sh$/"],
       "matchStrings": ["(?:^|\\r\\n|\\r|\\n)mealie_db_image=(?<depName>postgres):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})(?:\\r\\n|\\r|\\n|$)"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "postgres",
@@ -56,7 +56,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/.github/workflows/ci.yml/"],
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
       "matchStrings": ["(?<depName>rhysd/actionlint):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "rhysd/actionlint",
@@ -64,7 +64,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/.github/workflows/ci.yml/"],
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
       "matchStrings": ["(?<depName>ghcr\\.io/gitleaks/gitleaks):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "ghcr.io/gitleaks/gitleaks",
@@ -72,7 +72,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/.github/workflows/scan.yml/"],
+      "managerFilePatterns": ["/^\\.github/workflows/scan\\.yml$/"],
       "matchStrings": ["(?<depName>aquasec/trivy):(?<currentValue>[^@\\s]+)@(?<currentDigest>sha256:[a-f0-9]{64})"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "aquasec/trivy",
