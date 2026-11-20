@@ -9,8 +9,8 @@ automatically instead, where the merge is the upgrade ([Following `main`](#follo
 
 1. Read the release notes (the `CHANGELOG.md` section) for every release between yours and the new one, and
    the services' own release notes, **always for Tdarr** and for any major version bump. Anything under
-   **Upgrading** needs action. Renovate pull requests require review and merge by the maintainer; read these notes
-   before merging any major update.
+   **Upgrading** needs action. Renovate merges its pull requests once every required check passes; read these notes
+   before a major update reaches you, and before pulling `main`.
 2. Verify the new release ([verifying-releases.md](verifying-releases.md)).
 3. Let Tdarr's queue drain, or pause it, so no transcode is interrupted halfway.
 
@@ -73,16 +73,16 @@ The maintainer's server doesn't check out releases: it runs `main`, and a small 
 maintainer's private orchestration repository, not here) deploys every merge. A systemd user timer starts it about
 every 90 seconds; when `main` has moved, it fast-forwards the checkout, runs `docker compose config --quiet`,
 `docker compose pull` and `docker compose up -d --remove-orphans --wait`, and logs the old and the new commit. So
-**a merge to `main` reaches the server within about two minutes**, including dependency updates after their manual
-review and merge ([dependencies.md](dependencies.md#tracking-dependencies)).
+**a merge to `main` reaches the server within about two minutes**, including dependency updates, which Renovate merges
+once every required check passes ([dependencies.md](dependencies.md#tracking-dependencies)).
 
 - The agent only fast-forwards: it refuses a checkout with local changes or a `main` whose history was rewritten.
   If the configuration doesn't resolve or an image can't be pulled, it moves the checkout back, so the server keeps
   running what it ran.
-- **The merge is the upgrade.** Every update pull request, including patch, minor and major updates and image
-  rebuilds, requires review and manual merge by the maintainer. Before merging, read the release notes and check
-  backup readiness; take a backup on the server (`scripts/backup.sh`) before an update that changes a service image
-  or data format ([dependencies.md](dependencies.md#tracking-dependencies)).
+- **The merge is the upgrade.** Renovate merges an update, majors and image rebuilds included, once the required
+  checks pass, after the 3-day wait, and a merge deploys within minutes. The nightly backup is the way back
+  ([Rolling back](#rolling-back)). Tdarr and qBittorrent are the exceptions: Renovate is switched off for them and
+  they are updated by hand ([dependencies.md](dependencies.md#tracking-dependencies)).
 - **Backups and restores never overlap a deploy**: they take the agent's lock first ([Backing up](#backing-up)), so a
   merge that lands during the nightly backup deploys a few minutes after it, not halfway through.
 - **Rolling back** is a revert pull request, deployed the same way. If the service already migrated its data,

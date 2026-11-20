@@ -53,8 +53,9 @@ Docker Compose stack for Deimos, a homelab Ubuntu 24.04 (amd64) server with an N
 
 Every service has a health check, and every image is pinned by tag **and** digest, for `linux/amd64`. The GPU
 is reserved for Tdarr in a separate file, [`compose.gpu.yaml`](compose.gpu.yaml), so the stack also runs without
-one. New versions arrive as Renovate pull requests that CI checks; every update is reviewed and merged by hand.
-Tdarr updates always wait for the maintainer because it can rewrite the media library. The maintainer's server
+one. New versions arrive as Renovate pull requests, which merge automatically once every required CI check passes,
+after a three-day wait. Tdarr and qBittorrent are updated by hand, Tdarr because it can rewrite the media
+library. The maintainer's server
 follows `main`: a pull agent there applies each merge within a couple of minutes
 ([upgrading](docs/upgrading.md#following-main)). Nothing updates from a registry tag by itself: what runs is always
 a commit in `main`.
