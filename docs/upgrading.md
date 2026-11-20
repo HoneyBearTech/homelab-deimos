@@ -79,10 +79,10 @@ once every required check passes ([dependencies.md](dependencies.md#tracking-dep
 - The agent only fast-forwards: it refuses a checkout with local changes or a `main` whose history was rewritten.
   If the configuration doesn't resolve or an image can't be pulled, it moves the checkout back, so the server keeps
   running what it ran.
-- **The merge is the upgrade.** Every update pull request, including patch, minor and major updates and image
-  rebuilds, requires review and manual merge by the maintainer. Before merging, read the release notes and check
-  backup readiness; take a backup on the server (`scripts/backup.sh`) before an update that changes a service image
-  or data format ([dependencies.md](dependencies.md#tracking-dependencies)).
+- **The merge is the upgrade.** Renovate merges an update, majors and image rebuilds included, once the required
+  checks pass, after the 3-day wait, and a merge deploys within minutes. The nightly backup is the way back
+  ([Rolling back](#rolling-back)). Tdarr and qBittorrent are the exceptions: Renovate is switched off for them and
+  they are updated by hand ([dependencies.md](dependencies.md#tracking-dependencies)).
 - **Backups and restores never overlap a deploy**: they take the agent's lock first ([Backing up](#backing-up)), so a
   merge that lands during the nightly backup deploys a few minutes after it, not halfway through.
 - **Rolling back** is a revert pull request, deployed the same way. If the service already migrated its data,
