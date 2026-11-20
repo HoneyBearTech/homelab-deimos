@@ -36,10 +36,11 @@ is MIT-licensed, you can always fork it.
 | Security reporter | Anyone who reports a vulnerability | Report privately and allow time for a fix before disclosing, as described in [SECURITY.md](SECURITY.md). |
 
 Automated tools also take part: Renovate proposes updates to the stack's
-images, the Python check tools and the GitHub Actions. Every update pull
-request is reviewed and merged by the maintainer; a merge deploys to the
+images, the Python check tools and the GitHub Actions. Renovate merges its
+pull requests once every required check passes, after a three-day wait;
+Tdarr and qBittorrent are updated by hand. A merge deploys to the
 maintainer's server. Dependabot alerts remain enabled, and any remaining
-Dependabot security-update pull requests also require manual review. CI with
+Dependabot security-update pull requests are reviewed by hand. CI with
 the Compose policy check, CodeQL, dependency review and OpenSSF Scorecard
 check every change.
 
@@ -85,10 +86,10 @@ file's last change:
   - Who has access: the maintainer
   - Through: GitHub
 - Resource: Automated changes
-  - Who has access: Renovate opens pull requests; the maintainer reviews and
-    merges each one. Any remaining Dependabot security-update pull requests
-    are also reviewed and merged by hand. No update auto-merge workflow is
-    used.
+  - Who has access: Renovate opens pull requests and merges them once the
+    required checks pass (Tdarr and qBittorrent are never proposed). Any
+    remaining Dependabot security-update pull requests are reviewed and
+    merged by hand.
   - Through: GitHub Actions
 
 There are no other collaborators. Workflows use the per-job `GITHUB_TOKEN`,

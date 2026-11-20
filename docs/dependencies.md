@@ -42,7 +42,8 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
 
 - **Renovate** ([`renovate.json`](../renovate.json)) checks every Monday before 6am Central for Compose images,
   root Python requirements and GitHub Actions. Minor and patch updates are grouped into one pull request; major
-  updates remain separate and carry the `major` label. All update pull requests require manual review and merge.
+  updates remain separate and carry the `major` label. Renovate merges its pull requests itself (below), except
+  for Tdarr and qBittorrent.
   CodeQL init, analyze and upload-sarif actions are grouped so they move to one shared version. The global label is
   `dependencies`; vulnerability alert pull requests carry `security`, and OSV vulnerability alerts are enabled.
 - **Updates wait 3 days after release** (`minimumReleaseAge`), because a merge deploys. Vulnerability alert updates
@@ -50,7 +51,12 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
   and releases do; GHCR and unversioned tags such as `latest` don't), so `minimumReleaseAgeBehaviour` is
   `timestamp-optional`: an update with no release date opens straight away rather than being held forever. A pending
   update gets no branch or pull request until the 3 days have passed, and waits on the Dependency Dashboard
-  meanwhile (`internalChecksFilter` `strict`).
+  meanwhile (`internalChecksFilter` `strict`). An image rebuild (a new digest under the same tag) skips the wait
+  too: Docker Hub dates a rebuild by the tag's last push, so a tag rebuilt about weekly would never get through
+  the Monday-only schedule.
+- **Updates merge automatically**: Renovate squash-merges its pull requests (GitHub's auto-merge) once every
+  required check has passed, majors and image rebuilds included, and a failing update stays open for the
+  maintainer. **Tdarr and qBittorrent are the exceptions** (below).
 - **Runner label major updates need approval on the Dependency Dashboard.** A move such as `ubuntu-24.04` to
   `ubuntu-26.04` can't pass while the pinned actionlint doesn't know the new label, so Renovate lists it on the
   dashboard and opens it only when approved there, once actionlint accepts the label.
@@ -73,12 +79,12 @@ Each release will carry a CycloneDX SBOM listing every service's image and diges
   freshness. Any new pin needs upstream release/tag, official registry digest, `linux/amd64` manifest and consumer
   compatibility evidence.
 - **Mealie's updates migrate a database outside this stack**, on its database server: keep nightly backups there,
-  before any merge of one, since the change relies on them.
-- **Every update pull request is reviewed and merged by hand**, including image rebuilds and major updates. A major
-  update can migrate persistent data one way, so a revert alone might not undo it ([upgrading.md](upgrading.md)).
-  Back up before a merge that changes a service image or data format.
+  since an automatic merge of one relies on them.
+- **Major updates merge automatically too**, and so reach the server unattended. A major update can migrate
+  persistent data one way, so a revert alone might not undo it ([upgrading.md](upgrading.md)): the nightly backups
+  are the way back.
 - Dependabot alerts remain enabled. If Dependabot security-update pull requests remain enabled after this
-  version-update migration, they also require manual review and merge; no auto-merge workflow remains.
+  version-update migration, they are reviewed and merged by hand; no auto-merge workflow remains.
 - **A merge deploys.** The maintainer's server follows `main` with a pull agent, so a merge can reach the live host
   within minutes ([upgrading.md](upgrading.md#following-main)). Major updates can migrate persistent data; review release notes,
   migration guidance and backup readiness before merging.

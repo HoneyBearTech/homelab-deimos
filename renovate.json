@@ -2,7 +2,10 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":dependencyDashboard"],
   "enabledManagers": ["docker-compose", "pip_requirements", "github-actions", "custom.regex"],
-  "automerge": false,
+  "automerge": true,
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "platformAutomerge": true,
   "schedule": ["before 6am on monday"],
   "timezone": "America/Chicago",
   "labels": ["dependencies"],
@@ -15,6 +18,12 @@
     "minimumReleaseAge": null
   },
   "packageRules": [
+    {
+      "description": "An image rebuild (a new digest under the same tag) skips the 3-day wait: Docker Hub dates a rebuild by the tag's last push, so a tag rebuilt about weekly would restart the clock each time and never get through the Monday-only schedule. Only images: a moved tag on a pre-commit hook or an Action keeps the wait.",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["digest"],
+      "minimumReleaseAge": null
+    },
     {
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "minor and patch dependencies"
@@ -33,6 +42,7 @@
       "groupName": "GitHub CodeQL actions"
     },
     {
+      "description": "Tdarr (it can rewrite the media library) and qBittorrent (its tag pairs with the VPN image) are updated by hand: Renovate never proposes them, so nothing of theirs merges automatically.",
       "matchPackageNames": ["ghcr.io/haveagitgat/tdarr", "lscr.io/linuxserver/qbittorrent"],
       "enabled": false
     }

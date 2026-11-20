@@ -109,6 +109,10 @@ All notable changes to homelab-deimos are documented here. The format follows
 
 - Local hooks pin the Markdown linter's Node runtime and use the native,
   hash-pinned shell checker, so shell checks need no Docker daemon.
+- Renovate's pull requests merge automatically once every required check
+  passes, after a three-day wait: patch, minor and major updates and image
+  rebuilds alike (rebuilds and vulnerability fixes skip the wait). Tdarr and
+  qBittorrent are still updated by hand.
 - Refresh the pinned BusyBox, PostgreSQL, socket-proxy and autoheal digests.
 - Renovate waits 3 days after a release before proposing an update (not for
   security fixes), asks for approval on the Dependency Dashboard before a major
