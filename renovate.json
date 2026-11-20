@@ -14,7 +14,7 @@
   "minimumReleaseAgeBehaviour": "timestamp-optional",
   "internalChecksFilter": "strict",
   "vulnerabilityAlerts": {
-    "labels": ["security"],
+    "labels": ["security", "openssf"],
     "minimumReleaseAge": null
   },
   "packageRules": [
