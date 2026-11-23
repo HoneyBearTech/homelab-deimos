@@ -401,7 +401,7 @@ services:
 
   autoheal:
     <<: *hardened
-    image: willfarrell/autoheal:latest@sha256:1f05fc7fabb8ea716c8acd6d43bf286be0028ae6f18e21df9320c570b8ba8a18
+    image: willfarrell/autoheal:latest@sha256:aa7e65eef42543fa00770e1d36d1b44dd8869f160038c3ce423358dd7ac6d5f0
     container_name: autoheal
     restart: unless-stopped
     read_only: true
